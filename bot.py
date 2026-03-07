@@ -46,65 +46,103 @@ ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 # ===================== التخزين الدائم =====================
+
 DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
-VOTES_FILE = os.path.join(DATA_DIR, "votes_data.json")
 STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 
+
+# ===================== تحميل ملف JSON =====================
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
         return default_data
+
     try:
         with open(path, "r", encoding="utf-8") as f:
             return json.load(f)
-    except json.JSONDecodeError:
-        print(f"⚠️ File {path} contains invalid JSON. Using default.")
-        return default_data
-    except Exception as e:
-        print(f"❌ Error reading {path}: {e}")
+    except:
         return default_data
 
+
+# ===================== حفظ ملف JSON =====================
 
 def save_json_file(path, data):
-    dirpath = os.path.dirname(path)
-    os.makedirs(dirpath, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=dirpath)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.replace(tmp_path, path)
-    except Exception as e:
-        print(f"❌ Error saving {path}: {e}")
-        if os.path.exists(tmp_path):
-            os.remove(tmp_path)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
+
+# ===================== إنشاء الملفات إذا لم تكن موجودة =====================
+
+if not os.path.exists(REQUESTS_FILE):
+    save_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
+
+if not os.path.exists(STUDENTS_FILE):
+    save_json_file(STUDENTS_FILE, {"students": {}})
+
+
+# ===================== تحميل البيانات =====================
 
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
-VOTES_DATA = load_json_file(VOTES_FILE, {"votes": {}, "voters": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 
-USER_TEMP_VOTES = {}
-
 DATA = REQUESTS_DATA
-VOTES = VOTES_DATA["votes"]
-VOTERS = VOTES_DATA["voters"]
 
+
+# ===================== حفظ الطالب =====================
 
 def save_student(user):
+
     user_id = str(user.id)
 
-    STUDENTS_DATA["students"][user_id] = {
-        "id": user.id,
-        "full_name": user.full_name,
-        "username": user.username if user.username else "",
-        "first_name": user.first_name if user.first_name else "",
-        "last_seen": "active"
-    }
+    if user_id not in STUDENTS_DATA["students"]:
+        STUDENTS_DATA["students"][user_id] = {
+            "id": user.id,
+            "full_name": user.full_name,
+            "username": user.username if user.username else "",
+            "points": 0
+        }
 
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+
+# ===================== إضافة نقاط =====================
+
+def add_points(user_id, points):
+
+    user_id = str(user_id)
+
+    if user_id not in STUDENTS_DATA["students"]:
+        return
+
+    STUDENTS_DATA["students"][user_id]["points"] += points
+
+    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+
+# ===================== تسجيل طلب مادة =====================
+
+async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = str(user.id)
+
+    save_student(user)
+
+    if subject not in DATA["counts"]:
+        DATA["counts"][subject] = 0
+        DATA["who"][subject] = []
+
+    if user_id not in DATA["who"][subject]:
+
+        DATA["who"][subject].append(user_id)
+        DATA["counts"][subject] += 1
+
+        # إضافة نقطة للطالب
+        add_points(user.id, 1)
+
+        save_json_file(REQUESTS_FILE, DATA)
 # ===================== المواد =====================
 READY_SUBJECTS = {
     "لاب مايكرو": (
@@ -497,3 +535,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
