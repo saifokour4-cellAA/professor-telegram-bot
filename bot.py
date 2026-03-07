@@ -409,10 +409,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await vote(update, context)
         return
 
-    if text == "📊 التصويت على المواد":
-        await vote(update, context)
-        return
-
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
 
@@ -595,3 +591,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
