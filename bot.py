@@ -13,7 +13,8 @@ ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 
 DATA_FILE = "requests_data.json"
-
+# ===================== التصويت =====================
+VOTES = {}
 # ===================== المواد =====================
 READY_SUBJECTS = {
     "لاب مايكرو": (
@@ -309,7 +310,52 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
     )
+# ===================== أوامر التصويت =====================
 
+async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    keyboard = []
+
+    for subject in BASIC_SUBJECTS:
+        keyboard.append([InlineKeyboardButton(subject, callback_data=f"vote_{subject}")])
+
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        "📊 اختر المادة التي تريدها:",
+        reply_markup=reply_markup
+    )
+
+
+async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    subject = query.data.replace("vote_", "")
+
+    if subject not in VOTES:
+        VOTES[subject] = 0
+
+    VOTES[subject] += 1
+
+    await query.edit_message_text(
+        f"✅ تم تسجيل صوتك لمادة:\n{subject}"
+    )
+
+
+async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    if not VOTES:
+        await update.message.reply_text("لا يوجد تصويت بعد.")
+        return
+
+    msg = "📊 نتائج التصويت:\n\n"
+
+    for subject, count in VOTES.items():
+        msg += f"{subject} : {count}\n"
+
+    await update.message.reply_text(msg)
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -319,12 +365,14 @@ def main():
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
-    
-
+    app.add_handler(CommandHandler("vote", vote))
+app.add_handler(CommandHandler("vote_results", vote_results))
+app.add_handler(CallbackQueryHandler(vote_button, pattern="^vote_"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.run_polling()
 
 if __name__ == "__main__":
+
     main()
