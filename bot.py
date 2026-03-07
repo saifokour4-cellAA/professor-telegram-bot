@@ -409,6 +409,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await vote(update, context)
         return
 
+    if text == "📊 التصويت على المواد":
+        await vote(update, context)
+        return
+
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
 
@@ -447,10 +451,11 @@ def build_vote_keyboard(user_id):
 
     for subject in all_vote_subjects:
         mark = "✅" if subject in selected else "⬜"
+        count = VOTES.get(subject, 0)
 
         keyboard.append([
             InlineKeyboardButton(
-                f"{mark} {subject}",
+                f"{mark} {subject} ({count})",
                 callback_data=f"toggle_vote|{subject}"
             )
         ])
@@ -460,61 +465,53 @@ def build_vote_keyboard(user_id):
     ])
 
     keyboard.append([
-        InlineKeyboardButton("📊 عرض نتائج التصويت", callback_data="show_vote_results")
+        InlineKeyboardButton("📊 تحديث النتائج", callback_data="refresh_vote_results")
     ])
 
     return InlineKeyboardMarkup(keyboard)
 
 
+def build_vote_text():
+    all_vote_subjects = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
+
+    msg = "📊 التصويت على المواد\n\n"
+    msg += "اختر مادة أو أكثر، والنتائج تظهر مباشرة أول بأول:\n\n"
+
+    for subject in all_vote_subjects:
+        count = VOTES.get(subject, 0)
+        msg += f"• {subject}: {count}\n"
+
+    return msg
+
+
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     save_student(update.effective_user)
 
     if user_id not in USER_TEMP_VOTES:
         USER_TEMP_VOTES[user_id] = set()
 
     await update.message.reply_text(
-        "📊 اختر المواد التي تريد التصويت لها:\n\n"
-        "✅ يمكنك اختيار أكثر من مادة\n"
-        "ثم اضغط (تأكيد التصويت)",
+        build_vote_text(),
         reply_markup=build_vote_keyboard(user_id)
     )
 
 
 async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
 
     user = query.from_user
     user_id = user.id
+    save_student(user)
 
     if user_id not in USER_TEMP_VOTES:
         USER_TEMP_VOTES[user_id] = set()
 
     data = query.data
 
-
-    # عرض النتائج
-    if data == "show_vote_results":
-
-        if not VOTES:
-            await query.edit_message_text("لا يوجد تصويت بعد.")
-            return
-
-        msg = "📊 نتائج التصويت الحالية:\n\n"
-
-        for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
-            msg += f"• {subject} : {count}\n"
-
-        await query.edit_message_text(msg)
-        return
-
-
-    # اختيار مادة
+    # اختيار / إلغاء اختيار مادة
     if data.startswith("toggle_vote|"):
-
         subject = data.split("|", 1)[1]
 
         if subject in USER_TEMP_VOTES[user_id]:
@@ -523,64 +520,52 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             USER_TEMP_VOTES[user_id].add(subject)
 
         await query.edit_message_text(
-            "📊 اختر المواد التي تريد التصويت لها:\n\n"
-            "يمكنك اختيار أكثر من مادة ثم اضغط تأكيد",
+            build_vote_text(),
             reply_markup=build_vote_keyboard(user_id)
         )
         return
 
-
     # تأكيد التصويت
     if data == "confirm_votes":
-
         selected_subjects = USER_TEMP_VOTES.get(user_id, set())
 
         if not selected_subjects:
-
             await query.edit_message_text(
-                "⚠️ لم تختر أي مادة بعد.",
+                "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
                 reply_markup=build_vote_keyboard(user_id)
             )
-
             return
 
-        chosen_list = []
-
         for subject in selected_subjects:
-
             if subject not in VOTES:
                 VOTES[subject] = 0
                 VOTERS[subject] = []
 
             if str(user_id) not in VOTERS[subject]:
-
                 VOTERS[subject].append(str(user_id))
                 VOTES[subject] += 1
-
-            chosen_list.append(f"• {subject}")
 
         save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
 
         USER_TEMP_VOTES[user_id] = set()
 
         await query.edit_message_text(
-            "✅ تم تسجيل تصويتك بنجاح للمواد التالية:\n\n"
-            + "\n".join(chosen_list)
+            "✅ تم تسجيل تصويتك بنجاح.\n\n" + build_vote_text(),
+            reply_markup=build_vote_keyboard(user_id)
         )
+        return
+
+    # تحديث النتائج مباشرة
+    if data == "refresh_vote_results":
+        await query.edit_message_text(
+            build_vote_text(),
+            reply_markup=build_vote_keyboard(user_id)
+        )
+        return
 
 
 async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    if not VOTES:
-        await update.message.reply_text("لا يوجد تصويت بعد.")
-        return
-
-    msg = "📊 نتائج التصويت:\n\n"
-
-    for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
-        msg += f"• {subject} : {count}\n"
-
-    await update.message.reply_text(msg)
+    await update.message.reply_text(build_vote_text())
 # ===================== تشغيل البوت =====================
 
 def main():
@@ -592,16 +577,15 @@ def main():
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
-    app.add_handler(CommandHandler("vote", vote))
-    app.add_handler(CommandHandler("vote_results", vote_results))
+   app.add_handler(CommandHandler("vote", vote))
+app.add_handler(CommandHandler("vote_results", vote_results))
 
-    app.add_handler(
-        CallbackQueryHandler(
-            vote_button,
-            pattern="^(toggle_vote\\||confirm_votes|show_vote_results)$"
-        )
+app.add_handler(
+    CallbackQueryHandler(
+        vote_button,
+        pattern="^(toggle_vote\\||confirm_votes|refresh_vote_results)$"
     )
-
+)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
@@ -610,3 +594,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
