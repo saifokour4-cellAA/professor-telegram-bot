@@ -1,105 +1,148 @@
 import logging
+import json
 import os
-import sqlite3
+import tempfile
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def load_json_file(path, default_data):
+    if not os.path.exists(path):
+        return default_data
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        print(f"⚠️ File {path} contains invalid JSON. Using default.")
+        return default_data
+    except Exception as e:
+        print(f"❌ Error reading {path}: {e}")
+        return default_data
+
+def save_json_file(path, data):
+    # atomic write
+    dirpath = os.path.dirname(path)
+    os.makedirs(dirpath, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=dirpath)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception as e:
+        print(f"❌ Error saving {path}: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
 # ===================== إعدادات =====================
 TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
-
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
-
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
+# ===================== التخزين الدائم =====================
 
-# ===================== التخزين الدائم SQLite =====================# ===================== التخزين الدائم SQLite =====================
-
-DATA_DIR = "/data"
+DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
-DB_PATH = os.path.join(DATA_DIR, "bot.db")
+REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
+STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 
 
-def get_connection():
-    return sqlite3.connect(DB_PATH, timeout=10)
+# ===================== تحميل ملف JSON =====================
+
+def load_json_file(path, default_data):
+    if not os.path.exists(path):
+        return default_data
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return default_data
 
 
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
+# ===================== حفظ ملف JSON =====================
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS students (
-        id INTEGER PRIMARY KEY,
-        full_name TEXT,
-        username TEXT,
-        first_name TEXT,
-        points INTEGER DEFAULT 0
-    )
-    """)
+def save_json_file(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS requests (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        student_id INTEGER,
-        subject TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(student_id, subject)
-    )
-    """)
 
-    conn.commit()
-    conn.close()
+# ===================== إنشاء الملفات إذا لم تكن موجودة =====================
 
+if not os.path.exists(REQUESTS_FILE):
+    save_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
+
+if not os.path.exists(STUDENTS_FILE):
+    save_json_file(STUDENTS_FILE, {"students": {}})
+
+
+# ===================== تحميل البيانات =====================
+
+REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
+STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
+
+DATA = REQUESTS_DATA
+
+
+# ===================== حفظ الطالب =====================
 
 def save_student(user):
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT OR IGNORE INTO students (id, full_name, username, first_name, points)
-    VALUES (?, ?, ?, ?, 0)
-    """, (
-        user.id,
-        user.full_name,
-        user.username if user.username else "",
-        user.first_name if user.first_name else ""
-    ))
+    user_id = str(user.id)
 
-    cursor.execute("""
-    UPDATE students
-    SET full_name = ?, username = ?, first_name = ?
-    WHERE id = ?
-    """, (
-        user.full_name,
-        user.username if user.username else "",
-        user.first_name if user.first_name else "",
-        user.id
-    ))
+    if user_id not in STUDENTS_DATA["students"]:
+        STUDENTS_DATA["students"][user_id] = {
+            "id": user.id,
+            "full_name": user.full_name,
+            "username": user.username if user.username else "",
+            "points": 0
+        }
 
-    conn.commit()
-    conn.close()
+    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
+
+# ===================== إضافة نقاط =====================
 
 def add_points(user_id, points):
-    conn = get_connection()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-    UPDATE students
-    SET points = points + ?
-    WHERE id = ?
-    """, (points, user_id))
+    user_id = str(user_id)
 
-    conn.commit()
-    conn.close()
+    if user_id not in STUDENTS_DATA["students"]:
+        return
+
+    STUDENTS_DATA["students"][user_id]["points"] += points
+
+    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
 
+# ===================== تسجيل طلب مادة =====================
+
+async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
+
+    user_id = str(user.id)
+
+    save_student(user)
+
+    if subject not in DATA["counts"]:
+        DATA["counts"][subject] = 0
+        DATA["who"][subject] = []
+
+    if user_id not in DATA["who"][subject]:
+
+        DATA["who"][subject].append(user_id)
+        DATA["counts"][subject] += 1
+
+        # إضافة نقطة للطالب
+        add_points(user.id, 1)
+
+        save_json_file(REQUESTS_FILE, DATA)
 # ===================== المواد =====================
 READY_SUBJECTS = {
     "لاب مايكرو": (
@@ -169,6 +212,7 @@ PHARMD_SUBJECTS = [
 ]
 
 ALL_SUBJECTS = set(BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS)
+VOTE_SUBJECTS = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
 
 MAIN_MENU = [
     ["✅ المواد الجاهزة الآن", "📚 المواد الأساسية"],
@@ -184,16 +228,13 @@ def chunk_buttons(items, per_row=2):
         rows.append(items[i:i + per_row])
     return rows
 
-
 def main_keyboard():
     return ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
-
 
 def section_keyboard(items):
     rows = chunk_buttons(items, 2)
     rows.append(["⬅️ رجوع للقائمة الرئيسية"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
-
 
 async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -208,48 +249,21 @@ async def notify_admin_new_interest(subject: str, user, count: int, context: Con
         await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
     except Exception as e:
         print(f"❌ notify_admin_new_interest failed: {e}")
-
-
+        
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        save_student(user)
+    user_id = str(user.id)
 
-        conn = get_connection()
-        cursor = conn.cursor()
+    save_student(user)
 
-        cursor.execute("""
-        SELECT COUNT(*)
-        FROM requests
-        WHERE student_id = ? AND subject = ?
-        """, (user.id, subject))
-        exists = cursor.fetchone()[0]
+    if subject not in DATA["counts"]:
+        DATA["counts"][subject] = 0
+        DATA["who"][subject] = []
 
-        if exists == 0:
-            cursor.execute("""
-            INSERT INTO requests (student_id, subject)
-            VALUES (?, ?)
-            """, (user.id, subject))
-
-            add_points(user.id, 1)
-
-            cursor.execute("""
-            SELECT COUNT(*)
-            FROM requests
-            WHERE subject = ?
-            """, (subject,))
-            count = cursor.fetchone()[0]
-
-            conn.commit()
-            conn.close()
-
-            await notify_admin_new_interest(subject, user, count, context)
-        else:
-            conn.close()
-
-    except Exception as e:
-        print(f"register_request error: {e}")
-
-
+    if user_id not in DATA["who"][subject]:
+        DATA["who"][subject].append(user_id)
+        DATA["counts"][subject] += 1
+        save_json_file(REQUESTS_FILE, DATA)
+        await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
 # ===================== أوامر =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_student(update.effective_user)
@@ -273,33 +287,19 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
+    counts = DATA.get("counts", {})
+    if not counts:
+        await update.message.reply_text("لا توجد طلبات مسجلة بعد.")
+        return
 
-        cursor.execute("""
-        SELECT subject, COUNT(*)
-        FROM requests
-        GROUP BY subject
-        ORDER BY COUNT(*) DESC
-        """)
+    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
+    msg = "📊 إحصائيات الطلب على المواد:\n\n"
 
-        rows = cursor.fetchall()
-        conn.close()
+    for subject, count in items:
+        msg += f"• {subject} : {count}\n"
 
-        if not rows:
-            await update.message.reply_text("لا توجد طلبات مسجلة بعد.")
-            return
+    await update.message.reply_text(msg)
 
-        msg = "📊 إحصائيات الطلب على المواد:\n\n"
-        for subject, count in rows:
-            msg += f"• {subject} : {count}\n"
-
-        await update.message.reply_text(msg)
-
-    except Exception as e:
-        print(f"stats error: {e}")
-        await update.message.reply_text("صار خطأ أثناء قراءة الإحصائيات.")
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -308,29 +308,59 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT subject, COUNT(*)
-    FROM requests
-    GROUP BY subject
-    ORDER BY COUNT(*) DESC
-    LIMIT 10
-    """)
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
+    counts = DATA.get("counts", {})
+    if not counts:
         await update.message.reply_text("لا توجد بيانات بعد.")
         return
 
+    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
     msg = "🔥 أعلى 10 مواد طلبًا:\n\n"
-    for i, (subject, count) in enumerate(rows, start=1):
+
+    for i, (subject, count) in enumerate(items, start=1):
         msg += f"{i}) {subject} — {count}\n"
 
     await update.message.reply_text(msg)
+
+
+async def voters_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not VOTERS:
+        await update.message.reply_text("لا يوجد مصوتون بعد.")
+        return
+
+    msg = "🗳️ تفاصيل المصوتين:\n\n"
+
+    for subject in sorted(VOTERS.keys(), key=lambda s: VOTES.get(s, 0), reverse=True):
+        voter_ids = VOTERS.get(subject, [])
+        msg += f"📚 {subject} ({len(voter_ids)})\n"
+
+        if not voter_ids:
+            msg += "— لا يوجد أحد\n\n"
+            continue
+
+        for voter_id in voter_ids:
+            student = STUDENTS_DATA["students"].get(str(voter_id), {})
+            full_name = student.get("full_name", "بدون اسم")
+            username = student.get("username", "")
+
+            if username:
+                msg += f"• {full_name} (@{username})\n"
+            else:
+                msg += f"• {full_name}\n"
+
+        msg += "\n"
+
+    if len(msg) <= 4000:
+        await update.message.reply_text(msg)
+    else:
+        parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+        for part in parts:
+            await update.message.reply_text(part)
 
 
 async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -340,27 +370,16 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    counts = DATA.get("counts", {})
+    ready_counts = {k: v for k, v in counts.items() if k in READY_SUBJECTS}
 
-    placeholders = ",".join(["?"] * len(READY_SUBJECTS))
-    cursor.execute(f"""
-    SELECT subject, COUNT(*)
-    FROM requests
-    WHERE subject IN ({placeholders})
-    GROUP BY subject
-    ORDER BY COUNT(*) DESC
-    """, tuple(READY_SUBJECTS.keys()))
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    if not rows:
+    if not ready_counts:
         await update.message.reply_text("لا توجد طلبات على المواد الجاهزة بعد.")
         return
 
     msg = "✅ إحصائيات المواد الجاهزة:\n\n"
-    for subject, count in rows:
+
+    for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
 
     await update.message.reply_text(msg)
@@ -373,45 +392,8 @@ async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM students")
-        count = cursor.fetchone()[0]
-        conn.close()
-
-        await update.message.reply_text(f"👨‍🎓 عدد الطلاب المسجلين: {count}")
-
-    except Exception as e:
-        print(f"students_stats error: {e}")
-        await update.message.reply_text("صار خطأ أثناء قراءة بيانات الطلاب.")
-
-async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT points
-    FROM students
-    WHERE id = ?
-    """, (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-
-    if not row:
-        await update.message.reply_text("لا يوجد لديك حساب نقاط بعد.")
-        return
-
-    points = row[0]
-    await update.message.reply_text(
-        f"⭐ نقاطك مع البروفيسور: {points}\n\n"
-        "كلما زادت نقاطك، اقتربت من خصومات أفضل."
-    )
-
-
+    students_count = len(STUDENTS_DATA["students"])
+    await update.message.reply_text(f"👨‍🎓 عدد الطلاب المحفوظين: {students_count}")
 # ===================== الرسائل العامة =====================
 async def send_subscription_guide(update: Update):
     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
@@ -426,15 +408,12 @@ async def send_subscription_guide(update: Update):
         reply_markup=InlineKeyboardMarkup(btns),
     )
 
-
 async def send_contact(update: Update):
     btns = [[InlineKeyboardButton("📩 افتح محادثة مع البروفيسور", url=ADMIN_URL)]]
     await update.message.reply_text(
         "للتواصل المباشر مع البروفيسور اضغط الزر بالأسفل 👇",
         reply_markup=InlineKeyboardMarkup(btns),
     )
-
-
 async def send_about_professor(update: Update):
     await update.message.reply_text(
         "👨‍🏫 من هو البروفيسور؟\n\n"
@@ -454,8 +433,6 @@ async def send_about_professor(update: Update):
         "اسألوا زملاءكم اللي درسوا معه…\n"
         "الفيدباك منهم يحكي القصة كلها ✨"
     )
-
-
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
@@ -536,22 +513,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
     )
-
-
 # ===================== تشغيل البوت =====================
-def main():
-    init_db()
 
+def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # الأوامر
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
-    app.add_handler(CommandHandler("points", my_points))
 
+    # الرسائل
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
@@ -560,3 +535,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
