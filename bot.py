@@ -345,11 +345,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
      
     if text == "👨‍🏫 من هو البروفيسور":
-    await send_about_professor(update)
+        await send_about_professor(update)
     return
 
     if text == "📊 التصويت على المواد":
-    await vote(update, context)
+        await vote(update, context)
     return
     
     if text in READY_SUBJECTS:
@@ -520,5 +520,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
