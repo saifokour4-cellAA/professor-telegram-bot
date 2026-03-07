@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
-TOKEN = "PUT_YOUR_NEW_BOT_TOKEN_HERE"
+TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
 
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
