@@ -344,15 +344,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📩 تواصل مع البروفيسور":
         await send_contact(update)
         return
-     
-    if text == "👨‍🏫 من هو البروفيسور":
+
+    if text == "👨‍🏫 من هو البروفيسور؟":
         await send_about_professor(update)
         return
 
     if text == "📊 التصويت على المواد":
-        await vote(update, context)
-        return
-    
+       await vote(update, context)
+       return
+
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
 
@@ -363,19 +363,21 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-   if text in ALL_SUBJECTS:
-     await register_request(text, user, context)
+if text in ALL_SUBJECTS:
+    await register_request(text, user, context)
 
-     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
-     await update.message.reply_text(
+    btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
+    await update.message.reply_text(
         f"📚 المادة: {text}\n\n"
         "✅ تم تسجيل طلبك بنجاح.\n\n"
         "إذا وصلنا لعدد كافٍ من الطلبات على هذه المادة،\n"
         "رح نعلن عنها رسميًا على القناة إن شاء الله.\n\n"
         "📩 وإذا بدك تستفسر أكثر، تواصل مع البروفيسور من الزر بالأسفل.",
-   reply_markup=InlineKeyboardMarkup(btns)
+        reply_markup=InlineKeyboardMarkup(btns)
     )
     return
+
+    
 
     await update.message.reply_text(
         "اختار من الأزرار الموجودة 👇",
@@ -523,6 +525,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
