@@ -582,22 +582,27 @@ async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg)
 # ===================== تشغيل البوت =====================
+
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-   app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("stats", stats))
-app.add_handler(CommandHandler("vote", vote))
-app.add_handler(CommandHandler("vote_results", vote_results))
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("myid", myid))
+    app.add_handler(CommandHandler("stats", stats))
+    app.add_handler(CommandHandler("top", top))
+    app.add_handler(CommandHandler("ready_stats", ready_stats))
+    app.add_handler(CommandHandler("students_stats", students_stats))
+    app.add_handler(CommandHandler("vote", vote))
+    app.add_handler(CommandHandler("vote_results", vote_results))
 
-app.add_handler(
-    CallbackQueryHandler(
-        vote_button,
-        pattern="^(toggle_vote\\||confirm_votes|show_vote_results)$"
+    app.add_handler(
+        CallbackQueryHandler(
+            vote_button,
+            pattern="^(toggle_vote\\||confirm_votes|show_vote_results)$"
+        )
     )
-)
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.run_polling()
@@ -605,6 +610,3 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 if __name__ == "__main__":
     main()
-
-
-
