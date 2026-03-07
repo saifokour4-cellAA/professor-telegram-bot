@@ -367,8 +367,10 @@ def main():
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("vote", vote))
 app.add_handler(CommandHandler("vote_results", vote_results))
+
 app.add_handler(CallbackQueryHandler(vote_button, pattern="^vote_"))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.run_polling()
@@ -376,3 +378,4 @@ app.add_handler(CallbackQueryHandler(vote_button, pattern="^vote_"))
 if __name__ == "__main__":
 
     main()
+
