@@ -447,6 +447,7 @@ def build_vote_keyboard(user_id):
 
     for subject in all_vote_subjects:
         mark = "✅" if subject in selected else "⬜"
+
         keyboard.append([
             InlineKeyboardButton(
                 f"{mark} {subject}",
@@ -467,6 +468,7 @@ def build_vote_keyboard(user_id):
 
 async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+
     save_student(update.effective_user)
 
     if user_id not in USER_TEMP_VOTES:
@@ -481,6 +483,7 @@ async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     query = update.callback_query
     await query.answer()
 
@@ -491,6 +494,7 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         USER_TEMP_VOTES[user_id] = set()
 
     data = query.data
+
 
     # عرض النتائج
     if data == "show_vote_results":
@@ -532,10 +536,12 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         selected_subjects = USER_TEMP_VOTES.get(user_id, set())
 
         if not selected_subjects:
+
             await query.edit_message_text(
                 "⚠️ لم تختر أي مادة بعد.",
                 reply_markup=build_vote_keyboard(user_id)
             )
+
             return
 
         chosen_list = []
@@ -547,7 +553,8 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 VOTERS[subject] = []
 
             if str(user_id) not in VOTERS[subject]:
-                VOTERS[subject].append(str(user_id])
+
+                VOTERS[subject].append(str(user_id))
                 VOTES[subject] += 1
 
             chosen_list.append(f"• {subject}")
@@ -598,5 +605,6 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
 if __name__ == "__main__":
     main()
+
 
 
