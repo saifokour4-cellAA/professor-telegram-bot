@@ -229,27 +229,27 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"{i}) {subject} — {count}\n"
 
     await update.message.reply_text(msg)
-
-async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إحصائيات عامة لكل الطلبات"""
     uid = update.effective_user.id
-
+    
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
-
+    
     counts = DATA.get("counts", {})
-    ready_counts = {k: v for k, v in counts.items() if k in READY_SUBJECTS}
-
-    if not ready_counts:
-        await update.message.reply_text("لا توجد طلبات على المواد الجاهزة بعد.")
+    if not counts:
+        await update.message.reply_text("لا توجد بيانات بعد.")
         return
-
-    msg = "✅ إحصائيات المواد الجاهزة:\n\n"
-
-    for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
+    
+    msg = "📊 إحصائيات الطلبات الكاملة:\n\n"
+    
+    for subject, count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
+    
+    await update.message.reply_text(msg)
 
-async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
     if uid not in ADMIN_IDS:
@@ -522,6 +522,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
