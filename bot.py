@@ -12,9 +12,49 @@ ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 
-DATA_FILE = "requests_data.json"
-# ===================== التصويت =====================
-VOTES = {}
+# ===================== التخزين الدائم =====================
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+os.makedirs(DATA_DIR, exist_ok=True)
+
+REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
+VOTES_FILE = os.path.join(DATA_DIR, "votes_data.json")
+STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
+
+
+def load_json_file(path, default_data):
+    if not os.path.exists(path):
+        return default_data
+
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_json_file(path, data):
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
+VOTES_DATA = load_json_file(VOTES_FILE, {"votes": {}, "voters": {}})
+STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
+
+USER_TEMP_VOTES = {}
+
+DATA = REQUESTS_DATA
+VOTES = VOTES_DATA["votes"]
+VOTERS = VOTES_DATA["voters"]
+def save_student(user):
+    user_id = str(user.id)
+
+    STUDENTS_DATA["students"][user_id] = {
+        "id": user.id,
+        "full_name": user.full_name,
+        "username": user.username if user.username else "",
+        "first_name": user.first_name if user.first_name else "",
+        "last_seen": "active"
+    }
+
+    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 # ===================== المواد =====================
 READY_SUBJECTS = {
     "لاب مايكرو": (
@@ -89,6 +129,8 @@ MAIN_MENU = [
     ["✅ المواد الجاهزة الآن", "📚 المواد الأساسية"],
     ["🧪 اللابات", "🎓 مواد دكتور صيدلة"],
     ["💳 كيف أشترك؟", "📩 تواصل مع البروفيسور"],
+    ["📊 التصويت على المواد", "👨‍🏫 من هو البروفيسور؟"],
+]
 ]
 # ===================== أدوات مساعدة =====================
 def chunk_buttons(items, per_row=2):
@@ -105,19 +147,6 @@ def section_keyboard(items):
     rows.append(["⬅️ رجوع للقائمة الرئيسية"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {"counts": {}, "who": {}}
-
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-DATA = load_data()
-
 async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
     try:
         username = f"@{user.username}" if user.username else "بدون يوزرنيم"
@@ -133,7 +162,9 @@ async def notify_admin_new_interest(subject: str, user, count: int, context: Con
         pass
 
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
-    user_id = user.id
+    user_id = str(user.id)
+
+    save_student(user)
 
     if subject not in DATA["counts"]:
         DATA["counts"][subject] = 0
@@ -142,11 +173,12 @@ async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYP
     if user_id not in DATA["who"][subject]:
         DATA["who"][subject].append(user_id)
         DATA["counts"][subject] += 1
-        save_data(DATA)
+        save_json_file(REQUESTS_FILE, DATA)
         await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
-
 # ===================== أوامر =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    save_student(update.effective_user)
+
     await update.message.reply_text(
         "👋 أهلاً بك في بوت البروفيسور\n\n"
         "💪 معنا رح تضمن التفوق وبشهادة الجميع\n\n"
@@ -215,6 +247,16 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
+
+async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    students_count = len(STUDENTS_DATA["students"])
+    await update.message.reply_text(f"👨‍🎓 عدد الطلاب المحفوظين: {students_count}")
 # ===================== الرسائل العامة =====================
 async def send_subscription_guide(update: Update):
     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
@@ -235,7 +277,25 @@ async def send_contact(update: Update):
         "للتواصل المباشر مع البروفيسور اضغط الزر بالأسفل 👇",
         reply_markup=InlineKeyboardMarkup(btns),
     )
-
+async def send_about_professor(update: Update):
+    await update.message.reply_text(
+        "👨‍🏫 من هو البروفيسور؟\n\n"
+        "البروفيسور هو دكتور صيدلة بخبرة أكثر من 10 سنوات في التدريس.\n"
+        "طريقته مختلفة: ما بعلّمك تحفظ السؤال… بل تفهم فكرته 🧠\n\n"
+        "يعتمد على تحليل تفكير الدكاترة،\n"
+        "مراجعة سنوات الامتحانات القديمة،\n"
+        "ودراسة التفاريغ وكل ما يخص المادة.\n\n"
+        "ومن خلال هذا التحليل يحدد:\n"
+        "🎯 الأفكار الرئيسية والمتكررة في الامتحانات\n\n"
+        "ثم يقدّم:\n"
+        "📚 أسئلة سنوات متوقعة\n"
+        "مع شرحها الكامل بطريقة تخليك تفهم الفكرة.\n\n"
+        "لأن السؤال ممكن يجي بنفس الفكرة لكن بصياغة مختلفة،\n"
+        "فهدفه إنك تعرف تحل أي سؤال بثقة وليس تحفظه كوبي-بيست.\n\n"
+        "والدليل؟\n"
+        "اسألوا زملاءكم اللي درسوا معه…\n"
+        "الفيدباك منهم يحكي القصة كلها ✨"
+    )
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
@@ -283,7 +343,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "📩 تواصل مع البروفيسور":
         await send_contact(update)
         return
+     
+    if text == "👨‍🏫 من هو البروفيسور":
+    await send_about_professor(update)
+    return
 
+    if text == "📊 التصويت على المواد":
+    await vote(update, context)
+    return
+    
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
 
@@ -310,50 +378,124 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
     )
+
 # ===================== أوامر التصويت =====================
 
-async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def build_vote_keyboard(user_id):
+    all_vote_subjects = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
+    selected = USER_TEMP_VOTES.get(user_id, set())
 
     keyboard = []
 
-    for subject in BASIC_SUBJECTS:
-        keyboard.append([InlineKeyboardButton(subject, callback_data=f"vote_{subject}")])
+    for subject in all_vote_subjects:
+        mark = "✅" if subject in selected else "☐"
+        keyboard.append([InlineKeyboardButton(f"{mark} {subject}", callback_data=f"toggle_vote|{subject}")])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    keyboard.append([InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="confirm_votes")])
+    keyboard.append([InlineKeyboardButton("📊 عرض نتائج التصويت", callback_data="show_vote_results")])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    save_student(update.effective_user)
+
+    if user_id not in USER_TEMP_VOTES:
+        USER_TEMP_VOTES[user_id] = set()
 
     await update.message.reply_text(
-        "📊 اختر المادة التي تريدها:",
-        reply_markup=reply_markup
+        "📊 اختر المواد التي تريد التصويت لها:\n\n"
+        "✅ يمكنك اختيار أكثر من مادة\n"
+        "ثم اضغط (تأكيد التصويت)",
+        reply_markup=build_vote_keyboard(user_id)
     )
 
 
 async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     query = update.callback_query
     await query.answer()
 
-    subject = query.data.replace("vote_", "")
+    user = query.from_user
+    user_id = user.id
+    save_student(user)
 
-    if subject not in VOTES:
-        VOTES[subject] = 0
+    if user_id not in USER_TEMP_VOTES:
+        USER_TEMP_VOTES[user_id] = set()
 
-    VOTES[subject] += 1
+    data = query.data
 
-    await query.edit_message_text(
-        f"✅ تم تسجيل صوتك لمادة:\n{subject}"
-    )
+    if data == "show_vote_results":
+        if not VOTES:
+            await query.edit_message_text("لا يوجد تصويت بعد.")
+            return
+
+        msg = "📊 نتائج التصويت الحالية:\n\n"
+        for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
+            msg += f"• {subject} : {count}\n"
+
+        await query.edit_message_text(msg)
+        return
+
+    if data.startswith("toggle_vote|"):
+        subject = data.split("|", 1)[1]
+
+        if subject in USER_TEMP_VOTES[user_id]:
+            USER_TEMP_VOTES[user_id].remove(subject)
+        else:
+            USER_TEMP_VOTES[user_id].add(subject)
+
+        await query.edit_message_text(
+            "📊 اختر المواد التي تريد التصويت لها:\n\n"
+            "✅ يمكنك اختيار أكثر من مادة\n"
+            "ثم اضغط (تأكيد التصويت)",
+            reply_markup=build_vote_keyboard(user_id)
+        )
+        return
+
+    if data == "confirm_votes":
+        selected_subjects = USER_TEMP_VOTES.get(user_id, set())
+
+        if not selected_subjects:
+            await query.edit_message_text(
+                "⚠️ لم تختر أي مادة بعد.",
+                reply_markup=build_vote_keyboard(user_id)
+            )
+            return
+
+        chosen_list = []
+
+        for subject in selected_subjects:
+            if subject not in VOTES:
+                VOTES[subject] = 0
+                VOTERS[subject] = []
+
+            if str(user_id) not in VOTERS[subject]:
+                VOTERS[subject].append(str(user_id))
+                VOTES[subject] += 1
+
+            chosen_list.append(f"• {subject}")
+
+        save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
+
+        USER_TEMP_VOTES[user_id] = set()
+
+        await query.edit_message_text(
+            "✅ تم تسجيل تصويتك بنجاح للمواد التالية:\n\n"
+            + "\n".join(chosen_list)
+        )
+        return
 
 
 async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     if not VOTES:
         await update.message.reply_text("لا يوجد تصويت بعد.")
         return
 
-    msg = "📊 نتائج التصويت:\n\n"
+    msg = "📊 نتائج التصويت على المواد:\n\n"
 
-    for subject, count in VOTES.items():
-        msg += f"{subject} : {count}\n"
+    for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
+        msg += f"• {subject} : {count}\n"
 
     await update.message.reply_text(msg)
 # ===================== تشغيل البوت =====================
@@ -367,8 +509,9 @@ def main():
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("vote", vote))
     app.add_handler(CommandHandler("vote_results", vote_results))
+    app.add_handler(CommandHandler("students_stats", students_stats))
 
-    app.add_handler(CallbackQueryHandler(vote_button, pattern="^vote_"))
+    app.add_handler(CallbackQueryHandler(vote_button, pattern="^(toggle_vote\\||confirm_votes|show_vote_results)"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
