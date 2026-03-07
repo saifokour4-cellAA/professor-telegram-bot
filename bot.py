@@ -3,6 +3,12 @@ import json
 import os
 import tempfile
 
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -578,3 +584,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
