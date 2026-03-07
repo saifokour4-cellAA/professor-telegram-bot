@@ -1,7 +1,7 @@
 import json
 import os
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
 
 # ===================== إعدادات =====================
 TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
@@ -377,3 +377,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
