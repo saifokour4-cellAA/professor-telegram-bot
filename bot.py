@@ -482,11 +482,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== أوامر التصويت =====================
 
 def build_vote_keyboard(user_id):
-    selected = USER_TEMP_VOTES.get(user_id, set())
     keyboard = []
 
     for i, subject in enumerate(VOTE_SUBJECTS):
-        mark = "✅" if i in selected else "⬜"
+        temp_selected = i in USER_TEMP_VOTES.get(user_id, set())
+        already_voted = str(user_id) in VOTERS.get(subject, [])
+
+        selected = temp_selected or already_voted
+        mark = "✅" if selected else "⬜"
         count = VOTES.get(subject, 0)
 
         keyboard.append([
@@ -544,11 +547,9 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
+    # اختيار أو إزالة اختيار مادة
     if data.startswith("tv|"):
         idx = int(data.split("|", 1)[1])
-
-        if idx < 0 or idx >= len(VOTE_SUBJECTS):
-            return
 
         if idx in USER_TEMP_VOTES[user_id]:
             USER_TEMP_VOTES[user_id].remove(idx)
@@ -561,59 +562,58 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # تأكيد التصويت
     if data == "cv":
-    selected_indexes = USER_TEMP_VOTES.get(user_id, set())
+        selected_indexes = USER_TEMP_VOTES.get(user_id, set())
 
-    if not selected_indexes:
+        if not selected_indexes:
+            await query.edit_message_text(
+                "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
+                reply_markup=build_vote_keyboard(user_id)
+            )
+            return
+
+        selected_subjects = []
+
+        for idx in selected_indexes:
+            subject = VOTE_SUBJECTS[idx]
+            selected_subjects.append(subject)
+
+            if subject not in VOTES:
+                VOTES[subject] = 0
+                VOTERS[subject] = []
+
+            if str(user_id) not in VOTERS[subject]:
+                VOTERS[subject].append(str(user_id))
+                VOTES[subject] += 1
+
+        save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
+
+        USER_TEMP_VOTES[user_id] = set()
+
+        try:
+            username = f"@{user.username}" if user.username else "بدون يوزرنيم"
+            subjects_text = "\n".join([f"• {s}" for s in selected_subjects])
+
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=(
+                    "🗳️ تصويت جديد\n\n"
+                    f"👤 الاسم: {user.full_name}\n"
+                    f"🔗 الحساب: {username}\n\n"
+                    f"📚 المواد المختارة:\n{subjects_text}"
+                )
+            )
+        except Exception as e:
+            print(f"vote admin notify failed: {e}")
+
         await query.edit_message_text(
-            "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
+            "✅ تم تسجيل تصويتك بنجاح.\n\n" + build_vote_text(),
             reply_markup=build_vote_keyboard(user_id)
         )
         return
 
-    selected_subjects = []
-    newly_added_subjects = []
-
-    for idx in selected_indexes:
-        subject = VOTE_SUBJECTS[idx]
-        selected_subjects.append(subject)
-
-        if subject not in VOTES:
-            VOTES[subject] = 0
-            VOTERS[subject] = []
-
-        if str(user_id) not in VOTERS[subject]:
-            VOTERS[subject].append(str(user_id))
-            VOTES[subject] += 1
-            newly_added_subjects.append(subject)
-
-    save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
-
-    USER_TEMP_VOTES[user_id] = set()
-
-    # إشعار للأدمن
-    try:
-        username = f"@{user.username}" if user.username else "بدون يوزرنيم"
-        subjects_text = "\n".join([f"• {s}" for s in selected_subjects])
-
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                "🗳️ تصويت جديد\n\n"
-                f"👤 الاسم: {user.full_name}\n"
-                f"🔗 الحساب: {username}\n\n"
-                f"📚 المواد المختارة:\n{subjects_text}"
-            )
-        )
-    except Exception as e:
-        print(f"❌ vote admin notify failed: {e}")
-
-    await query.edit_message_text(
-        "✅ تم تسجيل تصويتك بنجاح.\n\n" + build_vote_text(),
-        reply_markup=build_vote_keyboard(user_id)
-    )
-    return
-
+   # تحديث النتائج
     if data == "rv":
         await query.edit_message_text(
             build_vote_text(),
@@ -623,7 +623,7 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(build_vote_text())
+    await update.
 # ===================== تشغيل البوت =====================
 
 def main():
@@ -661,3 +661,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
