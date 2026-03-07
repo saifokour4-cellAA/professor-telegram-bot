@@ -46,7 +46,7 @@ ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 # ===================== التخزين الدائم =====================
-DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+DATA_DIR = "/app/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
@@ -663,6 +663,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
