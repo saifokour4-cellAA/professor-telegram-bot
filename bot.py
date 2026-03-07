@@ -17,7 +17,8 @@ ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 
-# ===================== التخزين الدائم SQLite =====================
+# ===================== التخزين الدائم SQLite =====================# ===================== التخزين الدائم SQLite =====================
+
 DATA_DIR = "/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
@@ -25,14 +26,13 @@ DB_PATH = os.path.join(DATA_DIR, "bot.db")
 
 
 def get_connection():
-    return sqlite3.connect(DB_PATH)
+    return sqlite3.connect(DB_PATH, timeout=10)
 
 
 def init_db():
     conn = get_connection()
     cursor = conn.cursor()
 
-    # جدول الطلاب
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS students (
         id INTEGER PRIMARY KEY,
@@ -43,7 +43,6 @@ def init_db():
     )
     """)
 
-    # جدول طلبات المواد
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS requests (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,17 +62,24 @@ def save_student(user):
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT INTO students (id, full_name, username, first_name, points)
+    INSERT OR IGNORE INTO students (id, full_name, username, first_name, points)
     VALUES (?, ?, ?, ?, 0)
-    ON CONFLICT(id) DO UPDATE SET
-        full_name = excluded.full_name,
-        username = excluded.username,
-        first_name = excluded.first_name
     """, (
         user.id,
         user.full_name,
         user.username if user.username else "",
         user.first_name if user.first_name else ""
+    ))
+
+    cursor.execute("""
+    UPDATE students
+    SET full_name = ?, username = ?, first_name = ?
+    WHERE id = ?
+    """, (
+        user.full_name,
+        user.username if user.username else "",
+        user.first_name if user.first_name else "",
+        user.id
     ))
 
     conn.commit()
@@ -205,39 +211,43 @@ async def notify_admin_new_interest(subject: str, user, count: int, context: Con
 
 
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
-    save_student(user)
+    try:
+        save_student(user)
 
-    conn = get_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT COUNT(*)
-    FROM requests
-    WHERE student_id = ? AND subject = ?
-    """, (user.id, subject))
-    exists = cursor.fetchone()[0]
-
-    if exists == 0:
-        cursor.execute("""
-        INSERT INTO requests (student_id, subject)
-        VALUES (?, ?)
-        """, (user.id, subject))
-
-        add_points(user.id, 1)
+        conn = get_connection()
+        cursor = conn.cursor()
 
         cursor.execute("""
         SELECT COUNT(*)
         FROM requests
-        WHERE subject = ?
-        """, (subject,))
-        count = cursor.fetchone()[0]
+        WHERE student_id = ? AND subject = ?
+        """, (user.id, subject))
+        exists = cursor.fetchone()[0]
 
-        conn.commit()
-        conn.close()
+        if exists == 0:
+            cursor.execute("""
+            INSERT INTO requests (student_id, subject)
+            VALUES (?, ?)
+            """, (user.id, subject))
 
-        await notify_admin_new_interest(subject, user, count, context)
-    else:
-        conn.close()
+            add_points(user.id, 1)
+
+            cursor.execute("""
+            SELECT COUNT(*)
+            FROM requests
+            WHERE subject = ?
+            """, (subject,))
+            count = cursor.fetchone()[0]
+
+            conn.commit()
+            conn.close()
+
+            await notify_admin_new_interest(subject, user, count, context)
+        else:
+            conn.close()
+
+    except Exception as e:
+        print(f"register_request error: {e}")
 
 
 # ===================== أوامر =====================
@@ -263,29 +273,33 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    SELECT subject, COUNT(*)
-    FROM requests
-    GROUP BY subject
-    ORDER BY COUNT(*) DESC
-    """)
+        cursor.execute("""
+        SELECT subject, COUNT(*)
+        FROM requests
+        GROUP BY subject
+        ORDER BY COUNT(*) DESC
+        """)
 
-    rows = cursor.fetchall()
-    conn.close()
+        rows = cursor.fetchall()
+        conn.close()
 
-    if not rows:
-        await update.message.reply_text("لا توجد طلبات مسجلة بعد.")
-        return
+        if not rows:
+            await update.message.reply_text("لا توجد طلبات مسجلة بعد.")
+            return
 
-    msg = "📊 إحصائيات الطلب على المواد:\n\n"
-    for subject, count in rows:
-        msg += f"• {subject} : {count}\n"
+        msg = "📊 إحصائيات الطلب على المواد:\n\n"
+        for subject, count in rows:
+            msg += f"• {subject} : {count}\n"
 
-    await update.message.reply_text(msg)
+        await update.message.reply_text(msg)
 
+    except Exception as e:
+        print(f"stats error: {e}")
+        await update.message.reply_text("صار خطأ أثناء قراءة الإحصائيات.")
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -359,15 +373,19 @@ async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    conn = get_connection()
-    cursor = conn.cursor()
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
 
-    cursor.execute("SELECT COUNT(*) FROM students")
-    count = cursor.fetchone()[0]
-    conn.close()
+        cursor.execute("SELECT COUNT(*) FROM students")
+        count = cursor.fetchone()[0]
+        conn.close()
 
-    await update.message.reply_text(f"👨‍🎓 عدد الطلاب المسجلين: {count}")
+        await update.message.reply_text(f"👨‍🎓 عدد الطلاب المسجلين: {count}")
 
+    except Exception as e:
+        print(f"students_stats error: {e}")
+        await update.message.reply_text("صار خطأ أثناء قراءة بيانات الطلاب.")
 
 async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
