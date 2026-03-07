@@ -189,7 +189,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
     if uid not in ADMIN_IDS:
@@ -197,14 +197,15 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     counts = DATA.get("counts", {})
-    if not counts:
-        await update.message.reply_text("لا توجد طلبات مسجلة بعد.")
+    ready_counts = {k: v for k, v in counts.items() if k in READY_SUBJECTS}
+
+    if not ready_counts:
+        await update.message.reply_text("لا توجد طلبات على المواد الجاهزة بعد.")
         return
 
-    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-    msg = "📊 إحصائيات الطلب على المواد:\n\n"
+    msg = "✅ إحصائيات المواد الجاهزة:\n\n"
 
-    for subject, count in items:
+    for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
 
     await update.message.reply_text(msg)
@@ -346,11 +347,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
      
     if text == "👨‍🏫 من هو البروفيسور":
         await send_about_professor(update)
-    return
+        return
 
     if text == "📊 التصويت على المواد":
         await vote(update, context)
-    return
+        return
     
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
@@ -362,17 +363,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if text in ALL_SUBJECTS:
-        await register_request(text, user, context)
+   if text in ALL_SUBJECTS:
+     await register_request(text, user, context)
 
-        btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
-        await update.message.reply_text(
-            f"📚 المادة: {text}\n\n"
-            "⚠️ حالياً شغالين على تجهيز هاي المادة.\n"
-            "إذا بدك تكون من أوائل الناس اللي بتنزل إلهم، ابعث اسم المادة للبروفيسور على الخاص 👇",
-            reply_markup=InlineKeyboardMarkup(btns)
-        )
-        return
+     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
+     await update.message.reply_text(
+        f"📚 المادة: {text}\n\n"
+        "✅ تم تسجيل طلبك بنجاح.\n\n"
+        "إذا وصلنا لعدد كافٍ من الطلبات على هذه المادة،\n"
+        "رح نعلن عنها رسميًا على القناة إن شاء الله.\n\n"
+        "📩 وإذا بدك تستفسر أكثر، تواصل مع البروفيسور من الزر بالأسفل.",
+   reply_markup=InlineKeyboardMarkup(btns)
+    )
+    return
 
     await update.message.reply_text(
         "اختار من الأزرار الموجودة 👇",
@@ -520,6 +523,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
