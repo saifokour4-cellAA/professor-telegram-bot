@@ -174,6 +174,7 @@ PHARMD_SUBJECTS = [
 ]
 
 ALL_SUBJECTS = set(BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS)
+VOTE_SUBJECTS = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
 
 MAIN_MENU = [
     ["✅ المواد الجاهزة الآن", "📚 المواد الأساسية"],
@@ -440,40 +441,36 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===================== أوامر التصويت =====================
 
 def build_vote_keyboard(user_id):
-    all_vote_subjects = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
     selected = USER_TEMP_VOTES.get(user_id, set())
-
     keyboard = []
 
-    for subject in all_vote_subjects:
-        mark = "✅" if subject in selected else "⬜"
+    for i, subject in enumerate(VOTE_SUBJECTS):
+        mark = "✅" if i in selected else "⬜"
         count = VOTES.get(subject, 0)
 
         keyboard.append([
             InlineKeyboardButton(
                 f"{mark} {subject} ({count})",
-                callback_data=f"toggle_vote|{subject}"
+                callback_data=f"tv|{i}"
             )
         ])
 
     keyboard.append([
-        InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="confirm_votes")
+        InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="cv")
     ])
 
     keyboard.append([
-        InlineKeyboardButton("📊 تحديث النتائج", callback_data="refresh_vote_results")
+        InlineKeyboardButton("📊 تحديث النتائج", callback_data="rv")
     ])
 
     return InlineKeyboardMarkup(keyboard)
 
 
 def build_vote_text():
-    all_vote_subjects = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
-
     msg = "📊 التصويت على المواد\n\n"
     msg += "اختر مادة أو أكثر، والنتائج تظهر مباشرة أول بأول:\n\n"
 
-    for subject in all_vote_subjects:
+    for subject in VOTE_SUBJECTS:
         count = VOTES.get(subject, 0)
         msg += f"• {subject}: {count}\n"
 
@@ -506,14 +503,16 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    # اختيار / إلغاء اختيار مادة
-    if data.startswith("toggle_vote|"):
-        subject = data.split("|", 1)[1]
+    if data.startswith("tv|"):
+        idx = int(data.split("|", 1)[1])
 
-        if subject in USER_TEMP_VOTES[user_id]:
-            USER_TEMP_VOTES[user_id].remove(subject)
+        if idx < 0 or idx >= len(VOTE_SUBJECTS):
+            return
+
+        if idx in USER_TEMP_VOTES[user_id]:
+            USER_TEMP_VOTES[user_id].remove(idx)
         else:
-            USER_TEMP_VOTES[user_id].add(subject)
+            USER_TEMP_VOTES[user_id].add(idx)
 
         await query.edit_message_text(
             build_vote_text(),
@@ -521,18 +520,19 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # تأكيد التصويت
-    if data == "confirm_votes":
-        selected_subjects = USER_TEMP_VOTES.get(user_id, set())
+    if data == "cv":
+        selected_indexes = USER_TEMP_VOTES.get(user_id, set())
 
-        if not selected_subjects:
+        if not selected_indexes:
             await query.edit_message_text(
                 "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
                 reply_markup=build_vote_keyboard(user_id)
             )
             return
 
-        for subject in selected_subjects:
+        for idx in selected_indexes:
+            subject = VOTE_SUBJECTS[idx]
+
             if subject not in VOTES:
                 VOTES[subject] = 0
                 VOTERS[subject] = []
@@ -551,8 +551,7 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # تحديث النتائج مباشرة
-    if data == "refresh_vote_results":
+    if data == "rv":
         await query.edit_message_text(
             build_vote_text(),
             reply_markup=build_vote_keyboard(user_id)
@@ -579,7 +578,7 @@ def main():
     app.add_handler(
         CallbackQueryHandler(
             vote_button,
-            pattern="^(toggle_vote\\||confirm_votes|refresh_vote_results)$"
+            pattern="^(tv\\|\\d+|cv|rv)$"
         )
     )
 
@@ -591,4 +590,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
