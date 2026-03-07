@@ -9,9 +9,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, Messa
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
 def load_json_file(path, default_data):
     if not os.path.exists(path):
         return default_data
