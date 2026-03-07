@@ -446,11 +446,21 @@ def build_vote_keyboard(user_id):
     keyboard = []
 
     for subject in all_vote_subjects:
-        mark = "✅" if subject in selected else "☐"
-        keyboard.append([InlineKeyboardButton(f"{mark} {subject}", callback_data=f"toggle_vote|{subject}")])
+        mark = "✅" if subject in selected else "⬜"
+        keyboard.append([
+            InlineKeyboardButton(
+                f"{mark} {subject}",
+                callback_data=f"toggle_vote|{subject}"
+            )
+        ])
 
-    keyboard.append([InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="confirm_votes")])
-    keyboard.append([InlineKeyboardButton("📊 عرض نتائج التصويت", callback_data="show_vote_results")])
+    keyboard.append([
+        InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="confirm_votes")
+    ])
+
+    keyboard.append([
+        InlineKeyboardButton("📊 عرض نتائج التصويت", callback_data="show_vote_results")
+    ])
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -476,26 +486,31 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user = query.from_user
     user_id = user.id
-    save_student(user)
 
     if user_id not in USER_TEMP_VOTES:
         USER_TEMP_VOTES[user_id] = set()
 
     data = query.data
 
+    # عرض النتائج
     if data == "show_vote_results":
+
         if not VOTES:
             await query.edit_message_text("لا يوجد تصويت بعد.")
             return
 
         msg = "📊 نتائج التصويت الحالية:\n\n"
+
         for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
             msg += f"• {subject} : {count}\n"
 
         await query.edit_message_text(msg)
         return
 
+
+    # اختيار مادة
     if data.startswith("toggle_vote|"):
+
         subject = data.split("|", 1)[1]
 
         if subject in USER_TEMP_VOTES[user_id]:
@@ -505,13 +520,15 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text(
             "📊 اختر المواد التي تريد التصويت لها:\n\n"
-            "✅ يمكنك اختيار أكثر من مادة\n"
-            "ثم اضغط (تأكيد التصويت)",
+            "يمكنك اختيار أكثر من مادة ثم اضغط تأكيد",
             reply_markup=build_vote_keyboard(user_id)
         )
         return
 
+
+    # تأكيد التصويت
     if data == "confirm_votes":
+
         selected_subjects = USER_TEMP_VOTES.get(user_id, set())
 
         if not selected_subjects:
@@ -524,12 +541,13 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         chosen_list = []
 
         for subject in selected_subjects:
+
             if subject not in VOTES:
                 VOTES[subject] = 0
                 VOTERS[subject] = []
 
             if str(user_id) not in VOTERS[subject]:
-                VOTERS[subject].append(str(user_id))
+                VOTERS[subject].append(str(user_id])
                 VOTES[subject] += 1
 
             chosen_list.append(f"• {subject}")
@@ -542,15 +560,15 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "✅ تم تسجيل تصويتك بنجاح للمواد التالية:\n\n"
             + "\n".join(chosen_list)
         )
-        return
 
 
 async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     if not VOTES:
         await update.message.reply_text("لا يوجد تصويت بعد.")
         return
 
-    msg = "📊 نتائج التصويت على المواد:\n\n"
+    msg = "📊 نتائج التصويت:\n\n"
 
     for subject, count in sorted(VOTES.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
@@ -560,23 +578,19 @@ async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("myid", myid))
-    app.add_handler(CommandHandler("stats", stats))
-    app.add_handler(CommandHandler("top", top))
-    app.add_handler(CommandHandler("ready_stats", ready_stats))
-    app.add_handler(CommandHandler("students_stats", students_stats))
-    app.add_handler(CommandHandler("vote", vote))
-    app.add_handler(CommandHandler("vote_results", vote_results))
+   app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("stats", stats))
+app.add_handler(CommandHandler("vote", vote))
+app.add_handler(CommandHandler("vote_results", vote_results))
 
-    app.add_handler(
-        CallbackQueryHandler(
-            vote_button,
-            pattern="^(toggle_vote\\||confirm_votes|show_vote_results)"
-        )
+app.add_handler(
+    CallbackQueryHandler(
+        vote_button,
+        pattern="^(toggle_vote\\||confirm_votes|show_vote_results)$"
     )
+)
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.run_polling()
@@ -584,4 +598,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
