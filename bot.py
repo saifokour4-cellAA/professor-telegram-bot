@@ -1,7 +1,35 @@
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 import json
-import os
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+import tempfile
+
+def load_json_file(path, default_data):
+    if not os.path.exists(path):
+        return default_data
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError:
+        print(f"⚠️ File {path} contains invalid JSON. Using default.")
+        return default_data
+    except Exception as e:
+        print(f"❌ Error reading {path}: {e}")
+        return default_data
+
+def save_json_file(path, data):
+    # atomic write
+    dirpath = os.path.dirname(path)
+    os.makedirs(dirpath, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=dirpath)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, path)
+    except Exception as e:
+        print(f"❌ Error saving {path}: {e}")
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 # ===================== إعدادات =====================
 TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
@@ -147,20 +175,14 @@ def section_keyboard(items):
     rows.append(["⬅️ رجوع للقائمة الرئيسية"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
-async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
+async def notify_admin_new_interest(...):
     try:
-        username = f"@{user.username}" if user.username else "بدون يوزرنيم"
-        msg = (
-            "📊 طلب جديد على مادة\n\n"
-            f"📚 المادة: {subject}\n"
-            f"👤 الطالب: {user.full_name}\n"
-            f"🔗 الحساب: {username}\n"
-            f"📈 العدد الكلي: {count}"
-        )
+        ...
         await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
-    except Exception:
-        pass
-
+    except Exception as e:
+        # سجل الخطأ على الأقل
+        print(f"❌ notify_admin_new_interest failed: {e}")
+        
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(user.id)
 
@@ -191,7 +213,6 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
@@ -204,12 +225,10 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = "✅ إحصائيات المواد الجاهزة:\n\n"
-
     for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
 
     await update.message.reply_text(msg)
-
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -229,27 +248,26 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += f"{i}) {subject} — {count}\n"
 
     await update.message.reply_text(msg)
+    
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إحصائيات عامة لكل الطلبات"""
     uid = update.effective_user.id
-    
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
-    
+
     counts = DATA.get("counts", {})
     if not counts:
         await update.message.reply_text("لا توجد بيانات بعد.")
         return
-    
+
     msg = "📊 إحصائيات الطلبات الكاملة:\n\n"
-    
     for subject, count in sorted(counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
-    
+
     await update.message.reply_text(msg)
 
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def student_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
     if uid not in ADMIN_IDS:
@@ -522,6 +540,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
