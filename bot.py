@@ -180,7 +180,7 @@ MAIN_MENU = [
     ["✅ المواد الجاهزة الآن", "📚 المواد الأساسية"],
     ["🧪 اللابات", "🎓 مواد دكتور صيدلة"],
     ["💳 كيف أشترك؟", "📩 تواصل مع البروفيسور"],
-    ["📊 التصويت على المواد", "👨‍🏫 من هو البروفيسور؟"],
+    ["👨‍🏫 من هو البروفيسور؟"],
 ]
 
 # ===================== أدوات مساعدة =====================
@@ -447,10 +447,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_about_professor(update)
         return
 
-    if text == "📊 التصويت على المواد":
-        await vote(update, context)
-        return
-
     if text in READY_SUBJECTS:
         await register_request(text, user, context)
 
@@ -479,159 +475,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
     )
-# ===================== أوامر التصويت =====================
-
-def build_vote_keyboard(user_id):
-    keyboard = []
-
-    for i, subject in enumerate(VOTE_SUBJECTS):
-        temp_selected = i in USER_TEMP_VOTES.get(user_id, set())
-        already_voted = str(user_id) in VOTERS.get(subject, [])
-
-        selected = temp_selected or already_voted
-        mark = "✅" if selected else "⬜"
-        count = VOTES.get(subject, 0)
-
-        keyboard.append([
-            InlineKeyboardButton(
-                f"{mark} {subject} ({count})",
-                callback_data=f"tv|{i}"
-            )
-        ])
-
-    keyboard.append([
-        InlineKeyboardButton("🟢 تأكيد التصويت", callback_data="cv")
-    ])
-
-    keyboard.append([
-        InlineKeyboardButton("📊 تحديث النتائج", callback_data="rv")
-    ])
-
-    return InlineKeyboardMarkup(keyboard)
-
-
-def build_vote_text():
-    msg = "📊 التصويت على المواد\n\n"
-    msg += "اختر مادة أو أكثر، والنتائج تظهر مباشرة أول بأول:\n\n"
-
-    for subject in VOTE_SUBJECTS:
-        count = VOTES.get(subject, 0)
-        msg += f"• {subject}: {count}\n"
-
-    return msg
-
-
-async def vote(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    save_student(update.effective_user)
-
-    if user_id not in USER_TEMP_VOTES:
-        USER_TEMP_VOTES[user_id] = set()
-
-    await update.message.reply_text(
-        build_vote_text(),
-        reply_markup=build_vote_keyboard(user_id)
-    )
-
-
-async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-
-    user = query.from_user
-    user_id = user.id
-    save_student(user)
-
-    if user_id not in USER_TEMP_VOTES:
-        USER_TEMP_VOTES[user_id] = set()
-
-    data = query.data
-
-    # اختيار أو إزالة اختيار مادة
-    if data.startswith("tv|"):
-        idx = int(data.split("|", 1)[1])
-
-        if idx in USER_TEMP_VOTES[user_id]:
-            USER_TEMP_VOTES[user_id].remove(idx)
-        else:
-            USER_TEMP_VOTES[user_id].add(idx)
-
-        await query.edit_message_text(
-            build_vote_text(),
-            reply_markup=build_vote_keyboard(user_id)
-        )
-        return
-
-    # تأكيد التصويت
-    if data == "cv":
-        selected_indexes = USER_TEMP_VOTES.get(user_id, set())
-
-        if not selected_indexes:
-            await query.edit_message_text(
-                "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
-                reply_markup=build_vote_keyboard(user_id)
-            )
-            return
-
-        selected_subjects = []
-
-        for idx in selected_indexes:
-            subject = VOTE_SUBJECTS[idx]
-            selected_subjects.append(subject)
-
-            if subject not in VOTES:
-                VOTES[subject] = 0
-                VOTERS[subject] = []
-
-            if str(user_id) not in VOTERS[subject]:
-                VOTERS[subject].append(str(user_id))
-                VOTES[subject] += 1
-
-        save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
-
-        USER_TEMP_VOTES[user_id] = set()
-
-        try:
-            username = f"@{user.username}" if user.username else "بدون يوزرنيم"
-            subjects_text = "\n".join([f"• {s}" for s in selected_subjects])
-
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    "🗳️ تصويت جديد\n\n"
-                    f"👤 الاسم: {user.full_name}\n"
-                    f"🔗 الحساب: {username}\n\n"
-                    f"📚 المواد المختارة:\n{subjects_text}"
-                )
-            )
-        except Exception as e:
-            print(f"vote admin notify failed: {e}")
-
-        await query.edit_message_text(
-            "✅ تم تأكيد تصويتك بنجاح.\n\n" + build_vote_text(),
-            reply_markup=build_vote_keyboard(user_id)
-        )
-        return
-
-    # تحديث النتائج
-    if data == "rv":
-        await query.edit_message_text(
-            build_vote_text(),
-            reply_markup=build_vote_keyboard(user_id)
-        )
-        return
-
-
-async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        build_vote_text()
-    )
 # ===================== تشغيل البوت =====================
 
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # أوامر البوت
+    # الأوامر
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
@@ -639,23 +488,8 @@ def main():
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
 
-    # أوامر التصويت
-    app.add_handler(CommandHandler("vote", vote))
-    app.add_handler(CommandHandler("vote_results", vote_results))
-    app.add_handler(CommandHandler("voters", voters_stats))
-
-    # أزرار التصويت (Inline buttons)
-    app.add_handler(
-        CallbackQueryHandler(
-            vote_button,
-            pattern="^(tv\\|\\d+|cv|rv)$"
-        )
-    )
-
-    # استقبال الرسائل العادية من الأزرار
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
-    )
+    # الرسائل
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
     app.run_polling()
@@ -663,8 +497,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
-
