@@ -284,6 +284,47 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
+async def voters_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not VOTERS:
+        await update.message.reply_text("لا يوجد مصوتون بعد.")
+        return
+
+    msg = "🗳️ تفاصيل المصوتين:\n\n"
+
+    for subject in sorted(VOTERS.keys(), key=lambda s: VOTES.get(s, 0), reverse=True):
+        voter_ids = VOTERS.get(subject, [])
+        msg += f"📚 {subject} ({len(voter_ids)})\n"
+
+        if not voter_ids:
+            msg += "— لا يوجد أحد\n\n"
+            continue
+
+        for voter_id in voter_ids:
+            student = STUDENTS_DATA["students"].get(str(voter_id), {})
+            full_name = student.get("full_name", "بدون اسم")
+            username = student.get("username", "")
+
+            if username:
+                msg += f"• {full_name} (@{username})\n"
+            else:
+                msg += f"• {full_name}\n"
+
+        msg += "\n"
+
+    if len(msg) <= 4000:
+        await update.message.reply_text(msg)
+    else:
+        parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
+        for part in parts:
+            await update.message.reply_text(part)
+
+
 async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -521,35 +562,57 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data == "cv":
-        selected_indexes = USER_TEMP_VOTES.get(user_id, set())
+    selected_indexes = USER_TEMP_VOTES.get(user_id, set())
 
-        if not selected_indexes:
-            await query.edit_message_text(
-                "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
-                reply_markup=build_vote_keyboard(user_id)
-            )
-            return
-
-        for idx in selected_indexes:
-            subject = VOTE_SUBJECTS[idx]
-
-            if subject not in VOTES:
-                VOTES[subject] = 0
-                VOTERS[subject] = []
-
-            if str(user_id) not in VOTERS[subject]:
-                VOTERS[subject].append(str(user_id))
-                VOTES[subject] += 1
-
-        save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
-
-        USER_TEMP_VOTES[user_id] = set()
-
+    if not selected_indexes:
         await query.edit_message_text(
-            "✅ تم تسجيل تصويتك بنجاح.\n\n" + build_vote_text(),
+            "⚠️ لم تختر أي مادة بعد.\n\n" + build_vote_text(),
             reply_markup=build_vote_keyboard(user_id)
         )
         return
+
+    selected_subjects = []
+    newly_added_subjects = []
+
+    for idx in selected_indexes:
+        subject = VOTE_SUBJECTS[idx]
+        selected_subjects.append(subject)
+
+        if subject not in VOTES:
+            VOTES[subject] = 0
+            VOTERS[subject] = []
+
+        if str(user_id) not in VOTERS[subject]:
+            VOTERS[subject].append(str(user_id))
+            VOTES[subject] += 1
+            newly_added_subjects.append(subject)
+
+    save_json_file(VOTES_FILE, {"votes": VOTES, "voters": VOTERS})
+
+    USER_TEMP_VOTES[user_id] = set()
+
+    # إشعار للأدمن
+    try:
+        username = f"@{user.username}" if user.username else "بدون يوزرنيم"
+        subjects_text = "\n".join([f"• {s}" for s in selected_subjects])
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                "🗳️ تصويت جديد\n\n"
+                f"👤 الاسم: {user.full_name}\n"
+                f"🔗 الحساب: {username}\n\n"
+                f"📚 المواد المختارة:\n{subjects_text}"
+            )
+        )
+    except Exception as e:
+        print(f"❌ vote admin notify failed: {e}")
+
+    await query.edit_message_text(
+        "✅ تم تسجيل تصويتك بنجاح.\n\n" + build_vote_text(),
+        reply_markup=build_vote_keyboard(user_id)
+    )
+    return
 
     if data == "rv":
         await query.edit_message_text(
@@ -566,15 +629,20 @@ async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
+    # أوامر البوت
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
+
+    # أوامر التصويت
     app.add_handler(CommandHandler("vote", vote))
     app.add_handler(CommandHandler("vote_results", vote_results))
+    app.add_handler(CommandHandler("voters", voters_stats))
 
+    # أزرار التصويت (Inline buttons)
     app.add_handler(
         CallbackQueryHandler(
             vote_button,
@@ -582,7 +650,10 @@ def main():
         )
     )
 
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    # استقبال الرسائل العادية من الأزرار
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message)
+    )
 
     print("Bot is running...")
     app.run_polling()
