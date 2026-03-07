@@ -623,7 +623,9 @@ async def vote_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def vote_results(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.
+    await update.message.reply_text(
+        build_vote_text()
+    )
 # ===================== تشغيل البوت =====================
 
 def main():
@@ -661,4 +663,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
