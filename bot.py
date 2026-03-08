@@ -979,8 +979,29 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user = update.effective_user
+    mode = context.user_data.get("admin_mode")
 
-        if mode == "confirm_payment_manual":
+    # ===== ADMIN MODE : STUDENT LOOKUP =====
+    if mode == "student_lookup":
+        student_id = resolve_student_id(text)
+
+        if not student_id:
+            await update.message.reply_text("لم أجد هذا الطالب.")
+            return
+
+        await update.message.reply_text(build_student_profile_text(student_id))
+        context.user_data.pop("admin_mode", None)
+        return
+
+    # ===== ADMIN MODE : SUBJECT STATS =====
+    if mode == "subject_stats":
+        subject_name = text.strip()
+        await update.message.reply_text(build_subject_stats_text(subject_name))
+        context.user_data.pop("admin_mode", None)
+        return
+
+    # ===== ADMIN MODE : CONFIRM PAYMENT MANUAL =====
+    if mode == "confirm_payment_manual":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
         if len(lines) != 3:
@@ -1059,7 +1080,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         return
 
-
+    # ===== ADMIN MODE : CONFIRM PAYMENT AMOUNT ONLY =====
     if mode == "confirm_payment_amount_only":
         student_id = context.user_data.get("pending_payment_student_id")
         subject_text = context.user_data.get("pending_payment_subject")
@@ -1136,6 +1157,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_payment_student_id", None)
         context.user_data.pop("pending_payment_subject", None)
         return
+
+    # ===== الوضع العادي =====
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
         await update.message.reply_text(
