@@ -1130,6 +1130,44 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "admin_dashboard":
+        await dashboard(query, context)
+
+    elif data == "admin_leaderboard":
+        await leaderboard(query, context)
+
+    elif data == "admin_profits":
+        await profits(query, context)
+
+    elif data == "admin_top":
+        await top(query, context)
+
+    elif data == "admin_students":
+        await students_stats(query, context)
+
+    elif data == "admin_student":
+        await query.message.reply_text(
+            "استخدم الأمر:\n/student @username"
+        )
+
+    elif data == "admin_paid":
+        await query.message.reply_text(
+            "لتأكيد الدفع استخدم:\n/paid @username المادة - الامتحان 7"
+        )
+
+    elif data == "admin_subject":
+        await query.message.reply_text(
+            "إحصائية مادة:\n/subject لاب مايكرو - ميد"
+        )
+    
+    
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -1150,6 +1188,7 @@ def main():
     app.add_handler(CommandHandler("student", student_profile))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CallbackQueryHandler(admin_buttons))
     app.add_handler(CommandHandler("dashboard", dashboard))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
