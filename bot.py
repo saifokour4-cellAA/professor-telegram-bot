@@ -10,7 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = os.getenv("8654189257:AAHQ7Jdn5-vmLsD5jP4SC-WwrkyWxJO9Fhc")
 if not TOKEN:
     raise RuntimeError("BOT_TOKEN is not set")
 
