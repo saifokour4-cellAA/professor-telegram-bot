@@ -869,21 +869,22 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
         raw = text[1:].strip()
 
         known_commands = {
-            "start",
-            "myid",
-            "stats",
-            "top",
-            "ready_stats",
-            "students_stats",
-            "points",
-            "paid",
-            "profits",
-            "studentpay",
-            "student",
-            "myrequests",
-            "leaderboard",
-            "subject"
-        }
+    "start",
+    "myid",
+    "stats",
+    "top",
+    "ready_stats",
+    "students_stats",
+    "subject",
+    "points",
+    "paid",
+    "profits",
+    "studentpay",
+    "student",
+    "myrequests",
+    "leaderboard",
+    "fixpayment"
+}
 
         if raw and " " not in raw and raw.lower() not in known_commands:
             target = f"@{raw}"
