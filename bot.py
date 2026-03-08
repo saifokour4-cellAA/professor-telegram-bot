@@ -2,18 +2,48 @@ import logging
 import json
 import os
 import tempfile
-from datetime import datetime, time
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    CallbackQueryHandler,
-    filters,
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import CallbackQueryHandler
+from openai import OpenAI
+
+
+# ===== OpenAI Setup =====
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+
+# ===== GPT Function =====
+def ask_gpt(user_text: str) -> str:
+    if not client:
+        return "❌ مفتاح OpenAI غير موجود في متغيرات Railway."
+
+    try:
+        response = client.responses.create(
+            model="gpt-5",
+            input=[
+                {
+                    "role": "system",
+                    "content": (
+                        "أنت مساعد أكاديمي وصيدلاني داخل بوت البروفيسور. "
+                        "جاوب بالعربية الواضحة. "
+                        "إذا كان السؤال طبيًا أو دوائيًا، كن دقيقًا ومحافظًا. "
+                        "إذا احتاج الأمر، نبه أن الحالة تحتاج مراجعة طبيب أو صيدلي. "
+                        "استخدم أسلوب البروفيسور: شرح واضح، مرتب، وممتع، بدون إطالة زائدة."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": user_text
+                }
+            ]
+        )
+        return response.output_text.strip()
+    except Exception as e:
+        return f"❌ صار خطأ أثناء الاتصال بـ GPT:\n{e}"
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1678,6 +1708,21 @@ async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     except Exception as e:
         await update.message.reply_text(f"❌ فشل النشر:\n{e}")
+        
+        async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not context.args:
+        await update.message.reply_text("استخدم الأمر هكذا:\n/gpttest اشرحلي هبوط السكر")
+        return
+
+    user_text = " ".join(context.args).strip()
+    reply = ask_gpt(user_text)
+    await update.message.reply_text(reply)
 
 # ===================== تشغيل البوت =====================
 def main():
@@ -1703,15 +1748,17 @@ def main():
     app.add_handler(CommandHandler("testchannel", test_channel))
     app.add_handler(CommandHandler("postramadannow", post_ramadan_now))
 
+    app.add_handler(CommandHandler("gpttest", gpt_test))
+
     app.add_handler(CallbackQueryHandler(admin_buttons))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
 
     app.job_queue.run_daily(
-    scheduled_ramadan_post,
-    time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
-)
+        scheduled_ramadan_post,
+        time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+    )
 
     print("Bot is running...")
     app.run_polling()
