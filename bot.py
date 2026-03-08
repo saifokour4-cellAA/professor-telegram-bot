@@ -1028,81 +1028,7 @@ async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     
     
-    async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    students_count = len(STUDENTS_DATA["students"])
-
-    total_revenue = 0
-    total_points = 0
-    subject_revenue = {}
-
-    for student in STUDENTS_DATA["students"].values():
-
-        ensure_student_fields(student)
-
-        total_revenue += student.get("total_paid", 0)
-        total_points += student.get("points", 0)
-
-        for payment in student.get("payments", []):
-            subject = payment.get("subject", "بدون مادة")
-            amount = payment.get("amount", 0)
-
-            subject_revenue[subject] = subject_revenue.get(subject, 0) + amount
-
-    most_requested = None
-    if DATA.get("counts"):
-        most_requested = max(DATA["counts"].items(), key=lambda x: x[1])
-
-    most_profitable = None
-    if subject_revenue:
-        most_profitable = max(subject_revenue.items(), key=lambda x: x[1])
-
-    best_student = None
-    if STUDENTS_DATA["students"]:
-        best_student = max(
-            STUDENTS_DATA["students"].values(),
-            key=lambda s: s.get("points", 0)
-        )
-
-    msg = (
-        "📊 لوحة تحكم البروفيسور\n\n"
-        f"👨‍🎓 عدد الطلاب: {students_count}\n"
-        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
-        f"⭐ مجموع النقاط: {total_points}\n\n"
-    )
-
-    if most_requested:
-        msg += (
-            "🔥 أكثر مادة طلبًا:\n"
-            f"{most_requested[0]} ({most_requested[1]} طلب)\n\n"
-        )
-
-    if most_profitable:
-        msg += (
-            "💵 أكثر مادة ربحًا:\n"
-            f"{most_profitable[0]} ({most_profitable[1]} JD)\n\n"
-        )
-
-    if best_student:
-        username = f"@{best_student.get('username','')}" if best_student.get("username") else ""
-
-        msg += (
-            "🏆 أفضل طالب:\n"
-            f"{best_student.get('full_name','')} {username}\n"
-            f"⭐ {best_student.get('points',0)} نقطة\n"
-            f"💰 {best_student.get('total_paid',0)} JD\n"
-        )
-
-    await update.message.reply_text(msg)
-    
-    
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     uid = update.effective_user.id
 
     if uid not in ADMIN_IDS:
@@ -1116,7 +1042,6 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     subject_revenue = {}
 
     for student in STUDENTS_DATA["students"].values():
-
         ensure_student_fields(student)
 
         total_revenue += student.get("total_paid", 0)
@@ -1128,49 +1053,12 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             subject_revenue[subject] = subject_revenue.get(subject, 0) + amount
 
-    most_requested = None
-    if DATA.get("counts"):
-        most_requested = max(DATA["counts"].items(), key=lambda x: x[1])
-
-    most_profitable = None
-    if subject_revenue:
-        most_profitable = max(subject_revenue.items(), key=lambda x: x[1])
-
-    best_student = None
-    if STUDENTS_DATA["students"]:
-        best_student = max(
-            STUDENTS_DATA["students"].values(),
-            key=lambda s: s.get("points", 0)
-        )
-
     msg = (
         "📊 لوحة تحكم البروفيسور\n\n"
         f"👨‍🎓 عدد الطلاب: {students_count}\n"
         f"💰 إجمالي الأرباح: {total_revenue} JD\n"
-        f"⭐ مجموع النقاط: {total_points}\n\n"
+        f"⭐ مجموع النقاط: {total_points}\n"
     )
-
-    if most_requested:
-        msg += (
-            "🔥 أكثر مادة طلبًا:\n"
-            f"{most_requested[0]} ({most_requested[1]} طلب)\n\n"
-        )
-
-    if most_profitable:
-        msg += (
-            "💵 أكثر مادة ربحًا:\n"
-            f"{most_profitable[0]} ({most_profitable[1]} JD)\n\n"
-        )
-
-    if best_student:
-        username = f"@{best_student.get('username','')}" if best_student.get("username") else ""
-
-        msg += (
-            "🏆 أفضل طالب:\n"
-            f"{best_student.get('full_name','')} {username}\n"
-            f"⭐ {best_student.get('points',0)} نقطة\n"
-            f"💰 {best_student.get('total_paid',0)} JD\n"
-        )
 
     await update.message.reply_text(msg)
     
