@@ -403,15 +403,18 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if len(context.args) < 2:
-        await update.message.reply_text("استخدم الأمر هكذا:\n/paid 123456789 7")
+        await update.message.reply_text(
+            "استخدم الأمر هكذا:\n"
+            "/paid 123456789 7\n"
+            "أو\n"
+            "/paid @username 7\n"
+            "أو\n"
+            '/paid "الاسم الكامل" 7'
+        )
         return
 
-    student_id = context.args[0].strip()
-    amount_text = context.args[1].strip()
-
-    if not student_id.isdigit():
-        await update.message.reply_text("الـ ID غير صحيح.")
-        return
+    amount_text = context.args[-1].strip()
+    target_text = " ".join(context.args[:-1]).strip()
 
     try:
         amount = float(amount_text)
@@ -419,11 +422,45 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("المبلغ غير صحيح.")
         return
 
-    if student_id not in STUDENTS_DATA["students"]:
-        await update.message.reply_text("هذا الطالب غير موجود في البيانات.")
+    found_student_id = None
+
+    # 1) البحث بالـ ID
+    if target_text.isdigit():
+        if target_text in STUDENTS_DATA["students"]:
+            found_student_id = target_text
+
+    # 2) البحث باليوزرنيم
+    elif target_text.startswith("@"):
+        search_username = target_text[1:].strip().lower()
+
+        for student_id, student in STUDENTS_DATA["students"].items():
+            username = student.get("username", "").strip().lower()
+            if username == search_username:
+                found_student_id = student_id
+                break
+
+    # 3) البحث بالاسم الكامل
+    else:
+        search_name = target_text.strip().lower()
+
+        for student_id, student in STUDENTS_DATA["students"].items():
+            full_name = student.get("full_name", "").strip().lower()
+            if full_name == search_name:
+                found_student_id = student_id
+                break
+
+    if not found_student_id:
+        await update.message.reply_text("لم أجد هذا الطالب في البيانات.")
         return
 
-    student = STUDENTS_DATA["students"][student_id]
+    student = STUDENTS_DATA["students"][found_student_id]
+
+    if "paid" not in student:
+        student["paid"] = False
+    if "total_paid" not in student:
+        student["total_paid"] = 0
+    if "points" not in student:
+        student["points"] = 0
 
     student["paid"] = True
     student["total_paid"] += amount
@@ -431,9 +468,10 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
+    # إرسال رسالة للطالب
     try:
         await context.bot.send_message(
-            chat_id=int(student_id),
+            chat_id=int(found_student_id),
             text=(
                 "✅ تم تأكيد الدفع بنجاح\n\n"
                 f"💰 المبلغ المسجل: {amount} JD\n"
@@ -444,13 +482,16 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"❌ failed to notify student: {e}")
 
+    username_text = f"@{student.get('username', '')}" if student.get("username") else "بدون يوزرنيم"
+
     await update.message.reply_text(
         f"✅ تم تأكيد الدفع للطالب:\n"
-        f"{student['full_name']}\n"
+        f"👤 الاسم: {student.get('full_name', 'بدون اسم')}\n"
+        f"🔗 اليوزر: {username_text}\n"
+        f"🆔 ID: {found_student_id}\n"
         f"💰 المبلغ: {amount} JD\n"
         f"⭐ النقاط الحالية: {student['points']}"
     )
-
 
 async def profits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
