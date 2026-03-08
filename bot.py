@@ -944,6 +944,68 @@ async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     request_count = DATA.get("counts", {}).get(subject_name, 0)
 
+    paid_students = []
+    total_revenue = 0
+
+    for student_id, student in STUDENTS_DATA["students"].items():
+
+        ensure_student_fields(student)
+
+        subscriptions = student.get("subscriptions", {})
+
+        if subject_name in subscriptions:
+
+            amount = subscriptions[subject_name].get("amount", 0)
+            total_revenue += amount
+
+            paid_students.append({
+                "name": student.get("full_name", "بدون اسم"),
+                "username": student.get("username", ""),
+                "points": student.get("points", 0),
+                "amount": amount
+            })
+
+    msg = (
+        f"📚 المادة: {subject_name}\n\n"
+        f"📈 عدد الطلبات: {request_count}\n"
+        f"💰 عدد المشتركين: {len(paid_students)}\n"
+        f"💵 مجموع الربح: {total_revenue} JD\n\n"
+    )
+
+    if paid_students:
+
+        msg += "👨‍🎓 الطلاب المشتركين:\n\n"
+
+        for i, s in enumerate(paid_students, start=1):
+
+            username = f"@{s['username']}" if s["username"] else ""
+
+            msg += (
+                f"{i}) {s['name']} {username}\n"
+                f"💰 دفع: {s['amount']} JD\n"
+                f"⭐ نقاطه: {s['points']}\n\n"
+            )
+
+    else:
+        msg += "لا يوجد طلاب دافعين لهذه المادة."
+
+    await update.message.reply_text(msg)
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "استخدم الأمر هكذا:\n"
+            "/subject لاب مايكرو - ميد"
+        )
+        return
+
+    subject_name = " ".join(context.args).strip()
+
+    request_count = DATA.get("counts", {}).get(subject_name, 0)
+
     paid_count = 0
     total_revenue = 0
 
