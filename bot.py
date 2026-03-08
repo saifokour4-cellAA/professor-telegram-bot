@@ -890,15 +890,16 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     buttons = [
-        [InlineKeyboardButton("📊 Dashboard", callback_data="admin_dashboard")],
-        [InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")],
-        [InlineKeyboardButton("💰 الأرباح", callback_data="admin_profits")],
-        [InlineKeyboardButton("📚 أكثر المواد طلبًا", callback_data="admin_top")],
-        [InlineKeyboardButton("👨‍🎓 عدد الطلاب", callback_data="admin_students")],
-        [InlineKeyboardButton("👤 ملف طالب", callback_data="admin_student")],
-        [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
-        [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")],
-    ]
+    [InlineKeyboardButton("📊 Dashboard", callback_data="admin_dashboard")],
+    [InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")],
+    [InlineKeyboardButton("💰 الأرباح", callback_data="admin_profits")],
+    [InlineKeyboardButton("📚 أكثر المواد طلبًا", callback_data="admin_top")],
+    [InlineKeyboardButton("👨‍🎓 عدد الطلاب", callback_data="admin_students")],
+    [InlineKeyboardButton("👤 ملف طالب", callback_data="admin_student")],
+    [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
+    [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")],
+    [InlineKeyboardButton("📢 إرسال إعلان", callback_data="admin_broadcast")],
+]
 
     await update.message.reply_text(
         "⚙️ لوحة تحكم البروفيسور",
@@ -972,6 +973,12 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📚 المادة: {subject_text}\n\n"
             "مثال:\n"
             "3"
+        )
+
+    elif data == "admin_broadcast":
+        context.user_data["admin_mode"] = "broadcast_message"
+        await query.message.reply_text(
+            "📢 أرسل الآن الرسالة التي تريد إرسالها لكل الطلاب."
         )
 
 
@@ -1156,6 +1163,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         context.user_data.pop("pending_payment_student_id", None)
         context.user_data.pop("pending_payment_subject", None)
+        return
+
+    # ===== ADMIN MODE : BROADCAST =====
+    if mode == "broadcast_message":
+        sent = 0
+        failed = 0
+
+        for student_id, student in STUDENTS_DATA["students"].items():
+            try:
+                await context.bot.send_message(
+                    chat_id=int(student_id),
+                    text=f"📢 إعلان من البروفيسور:\n\n{text}"
+                )
+                sent += 1
+            except Exception:
+                failed += 1
+
+        await update.message.reply_text(
+            f"✅ تم إرسال الإعلان\n\n"
+            f"📨 نجح الإرسال إلى: {sent}\n"
+            f"❌ فشل الإرسال إلى: {failed}"
+        )
+
+        context.user_data.pop("admin_mode", None)
         return
 
     # ===== الوضع العادي =====
