@@ -900,6 +900,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
     [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")],
     [InlineKeyboardButton("📢 إرسال إعلان", callback_data="admin_broadcast")],
+    [InlineKeyboardButton("📣 نشر في القناة الرئيسية", callback_data="admin_post_channel")],
 ]
 
     await update.message.reply_text(
@@ -980,6 +981,12 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["admin_mode"] = "broadcast_message"
         await query.message.reply_text(
             "📢 أرسل الآن الرسالة التي تريد إرسالها لكل الطلاب."
+        )
+        
+    elif data == "admin_post_channel":
+        context.user_data["admin_mode"] = "post_main_channel"
+        await query.message.reply_text(
+            "📣 أرسل الآن الرسالة التي تريد نشرها في القناة الرئيسية."
         )
 
 
@@ -1186,6 +1193,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📨 نجح الإرسال إلى: {sent}\n"
             f"❌ فشل الإرسال إلى: {failed}"
         )
+
+        context.user_data.pop("admin_mode", None)
+        return
+        
+    # ===== ADMIN MODE : POST TO MAIN CHANNEL =====
+    if mode == "post_main_channel":
+        try:
+            await context.bot.send_message(
+                chat_id=MAIN_CHANNEL_ID,
+                text=text
+            )
+            await update.message.reply_text("✅ تم نشر الرسالة في القناة الرئيسية.")
+        except Exception as e:
+            await update.message.reply_text(f"❌ فشل النشر في القناة:\n{e}")
 
         context.user_data.pop("admin_mode", None)
         return
