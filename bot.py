@@ -14,11 +14,7 @@ from openai import OpenAI
 
 # ===== OpenAI Setup =====
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-print("OPENAI_API_KEY raw exists:", OPENAI_API_KEY is not None)
-print("OPENAI_API_KEY stripped exists:", bool((OPENAI_API_KEY or "").strip()))
-print("OPENAI_API_KEY prefix:", (OPENAI_API_KEY or "")[:10])
-
-client = OpenAI(api_key=OPENAI_API_KEY.strip()) if OPENAI_API_KEY and OPENAI_API_KEY.strip() else None
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # ===== GPT Function =====
 def ask_gpt(user_text: str) -> str:
