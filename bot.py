@@ -11,7 +11,6 @@ logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
 TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
-
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
@@ -65,6 +64,7 @@ STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 DATA = REQUESTS_DATA
 
 
+# ===================== حفظ الطالب =====================
 def save_student(user):
     user_id = str(user.id)
 
@@ -101,6 +101,7 @@ def add_points(user_id, points):
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
 
+# ===================== تسجيل طلب مادة =====================
 async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
     try:
         username = f"@{user.username}" if user.username else "بدون يوزرنيم"
@@ -130,14 +131,14 @@ async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYP
         DATA["counts"][subject] += 1
 
         add_points(user.id, 1)
-
         save_json_file(REQUESTS_FILE, DATA)
+
         await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
 
 
-# ===================== المواد =====================
+# ===================== المواد الجاهزة حسب المادة + نوع الامتحان =====================
 READY_SUBJECTS = {
-    "لاب مايكرو": (
+    ("لاب مايكرو", "فيرست"): (
         "🧫 قناة متوقّع البروفيسور – لاب مايكرو\n\n"
         "القناة تحتوي على:\n"
         "✔ شرح تجارب اللاب\n"
@@ -149,7 +150,8 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-    "فايتو صيدلة": (
+
+    ("فايتو صيدلة", "فيرست"): (
         "🌿 قناة متوقّع البروفيسور – فايتو صيدلة\n\n"
         "القناة تحتوي على:\n"
         "✔ سنوات أسئلة\n"
@@ -159,7 +161,8 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-    "فايتوثيرابي صيدلة": (
+
+    ("فايتوثيرابي صيدلة", "فيرست"): (
         "🌿 قناة متوقّع البروفيسور – فايتوثيرابي صيدلة\n\n"
         "القناة تحتوي على:\n"
         "✔ أسئلة سنوات متوقعة مع إجاباتها\n\n"
@@ -168,7 +171,8 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-    "ميدو 2": (
+
+    ("ميدو 2", "فيرست"): (
         "😎 طلاب ميدو 2\n"
         "فيرست\n\n"
         "📚 فيديوهات سنوات + متوقّع البروفيسور\n"
@@ -329,7 +333,10 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     counts = DATA.get("counts", {})
-    ready_counts = {k: v for k, v in counts.items() if any(k.startswith(rs) for rs in READY_SUBJECTS)}
+    ready_counts = {
+        k: v for k, v in counts.items()
+        if any(k == f"{subject} - {exam}" for (subject, exam) in READY_SUBJECTS.keys())
+    }
 
     if not ready_counts:
         await update.message.reply_text("لا توجد طلبات على المواد الجاهزة بعد.")
@@ -421,7 +428,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
-        context.user_data.pop("pending_ready", None)
 
         await update.message.reply_text(
             "رجعناك للقائمة الرئيسية ✅",
@@ -430,9 +436,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text == "✅ المواد الجاهزة الآن":
+        ready_subject_names = sorted(list({subject for subject, exam in READY_SUBJECTS.keys()}))
         await update.message.reply_text(
             "اختر مادة جاهزة 👇",
-            reply_markup=section_keyboard(list(READY_SUBJECTS.keys()))
+            reply_markup=section_keyboard(ready_subject_names)
         )
         return
 
@@ -469,9 +476,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_about_professor(update)
         return
 
-    if text in READY_SUBJECTS:
+    ready_subject_names = {subject for subject, exam in READY_SUBJECTS.keys()}
+
+    if text in ready_subject_names:
         context.user_data["pending_subject"] = text
-        context.user_data["pending_ready"] = True
 
         await update.message.reply_text(
             f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
@@ -481,7 +489,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ALL_SUBJECTS:
         context.user_data["pending_subject"] = text
-        context.user_data["pending_ready"] = text in READY_SUBJECTS
 
         await update.message.reply_text(
             f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
@@ -491,7 +498,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ["فيرست", "سكند", "فاينال", "ميد"]:
         pending_subject = context.user_data.get("pending_subject")
-        pending_ready = context.user_data.get("pending_ready", False)
 
         if not pending_subject:
             await update.message.reply_text(
@@ -501,13 +507,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         full_subject = f"{pending_subject} - {text}"
-
         await register_request(full_subject, user, context)
 
-        if pending_ready:
+        ready_key = (pending_subject, text)
+
+        if ready_key in READY_SUBJECTS:
             btns = [[InlineKeyboardButton("📩 إرسال وصل الدفع للبروفيسور", url=ADMIN_URL)]]
             await update.message.reply_text(
-                READY_SUBJECTS[pending_subject] + f"\n\n📝 الامتحان المختار: {text}",
+                READY_SUBJECTS[ready_key] + f"\n\n📝 الامتحان المختار: {text}",
                 reply_markup=InlineKeyboardMarkup(btns)
             )
         else:
@@ -523,7 +530,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
         context.user_data.pop("pending_subject", None)
-        context.user_data.pop("pending_ready", None)
         return
 
     await update.message.reply_text(
