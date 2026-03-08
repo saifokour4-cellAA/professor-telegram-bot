@@ -386,7 +386,16 @@ async def notify_admin_new_interest(subject: str, user, count: int, context: Con
             f"📈 العدد الكلي: {count}"
         )
 
-        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+        buttons = [
+            [InlineKeyboardButton("✅ تأكيد الدفع لهذا الطالب", callback_data=f"confirm_pay|{user.id}|{subject}")]
+        ]
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=msg,
+            reply_markup=InlineKeyboardMarkup(buttons)
+        )
+
         print(f"✅ Admin notified successfully: {subject} / {user.id}")
 
     except Exception as e:
@@ -929,12 +938,12 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "admin_subject":
         context.user_data["admin_mode"] = "subject_stats"
         await query.message.reply_text(
-            "📊 أرسل اسم المادة:\n\n"
+            "📊 أرسل اسم المادة بهذا الشكل:\n\n"
             "لاب مايكرو - ميد"
         )
 
     elif data == "admin_paid":
-        context.user_data["admin_mode"] = "confirm_payment"
+        context.user_data["admin_mode"] = "confirm_payment_manual"
         await query.message.reply_text(
             "💳 أرسل معلومات الدفع بهذا الشكل:\n\n"
             "@username\n"
@@ -946,37 +955,38 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "7"
         )
 
+    elif data.startswith("confirm_pay|"):
+        try:
+            _, student_id, subject_text = data.split("|", 2)
+        except ValueError:
+            await query.message.reply_text("❌ تعذر قراءة بيانات الزر.")
+            return
+
+        context.user_data["admin_mode"] = "confirm_payment_amount_only"
+        context.user_data["pending_payment_student_id"] = student_id
+        context.user_data["pending_payment_subject"] = subject_text
+
+        await query.message.reply_text(
+            f"💰 اكتب الآن المبلغ لهذا الطالب فقط:\n\n"
+            f"🆔 ID: {student_id}\n"
+            f"📚 المادة: {subject_text}\n\n"
+            "مثال:\n"
+            "3"
+        )
+
 
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user = update.effective_user
 
-    mode = context.user_data.get("admin_mode")
-
-    if mode == "student_lookup":
-        student_id = resolve_student_id(text)
-
-        if not student_id:
-            await update.message.reply_text("لم أجد هذا الطالب.")
-            return
-
-        await update.message.reply_text(build_student_profile_text(student_id))
-        context.user_data.pop("admin_mode", None)
-        return
-
-    if mode == "subject_stats":
-        subject_name = text.strip()
-        await update.message.reply_text(build_subject_stats_text(subject_name))
-        context.user_data.pop("admin_mode", None)
-        return
-
-    if mode == "confirm_payment":
+        if mode == "confirm_payment_manual":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-        if len(lines) < 3:
+        if len(lines) != 3:
             await update.message.reply_text(
-                "الرجاء إرسالها بهذا الشكل:\n\n"
+                "❌ الصيغة غير صحيحة.\n\n"
+                "أرسلها هكذا:\n"
                 "@username\n"
                 "المادة - الامتحان\n"
                 "المبلغ"
@@ -989,13 +999,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         found_student_id = resolve_student_id(target_text)
         if not found_student_id:
-            await update.message.reply_text("لم أجد هذا الطالب.")
+            await update.message.reply_text("❌ لم أجد هذا الطالب.")
             return
 
         try:
             amount = float(amount_text)
         except Exception:
-            await update.message.reply_text("المبلغ غير صحيح.")
+            await update.message.reply_text("❌ المبلغ غير صحيح.")
             return
 
         student = STUDENTS_DATA["students"][found_student_id]
@@ -1032,7 +1042,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
             )
         except Exception as e:
-            print(f"❌ failed to notify student from admin_mode: {e}")
+            print(f"❌ failed to notify student from manual mode: {e}")
 
         username_text = f"@{student.get('username', '')}" if student.get("username") else "بدون يوزرنيم"
 
@@ -1049,6 +1059,83 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         return
 
+
+    if mode == "confirm_payment_amount_only":
+        student_id = context.user_data.get("pending_payment_student_id")
+        subject_text = context.user_data.get("pending_payment_subject")
+
+        if not student_id or not subject_text:
+            await update.message.reply_text("❌ لا توجد عملية دفع معلقة.")
+            context.user_data.pop("admin_mode", None)
+            context.user_data.pop("pending_payment_student_id", None)
+            context.user_data.pop("pending_payment_subject", None)
+            return
+
+        try:
+            amount = float(text)
+        except Exception:
+            await update.message.reply_text("❌ اكتب رقم فقط، مثل:\n3")
+            return
+
+        student = STUDENTS_DATA["students"].get(str(student_id))
+        if not student:
+            await update.message.reply_text("❌ الطالب غير موجود.")
+            context.user_data.pop("admin_mode", None)
+            context.user_data.pop("pending_payment_student_id", None)
+            context.user_data.pop("pending_payment_subject", None)
+            return
+
+        ensure_student_fields(student)
+
+        payment_record = {
+            "amount": amount,
+            "subject": subject_text,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "confirmed_by": update.effective_user.id
+        }
+
+        student["paid"] = True
+        student["total_paid"] += amount
+        student["points"] += int(amount)
+        student["payments"].append(payment_record)
+        student["subscriptions"][subject_text] = {
+            "paid": True,
+            "amount": amount,
+            "date": payment_record["date"]
+        }
+
+        save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+        try:
+            await context.bot.send_message(
+                chat_id=int(student_id),
+                text=(
+                    "✅ تم تأكيد الدفع بنجاح\n\n"
+                    f"📚 المادة: {subject_text}\n"
+                    f"💰 المبلغ المسجل: {amount} JD\n"
+                    f"⭐ نقاطك الحالية: {student['points']}\n\n"
+                    "شكرًا لك 🌟"
+                )
+            )
+        except Exception as e:
+            print(f"❌ failed to notify student from button mode: {e}")
+
+        username_text = f"@{student.get('username', '')}" if student.get("username") else "بدون يوزرنيم"
+
+        await update.message.reply_text(
+            f"✅ تم تأكيد الدفع للطالب:\n"
+            f"👤 الاسم: {student.get('full_name', 'بدون اسم')}\n"
+            f"🔗 اليوزر: {username_text}\n"
+            f"🆔 ID: {student_id}\n"
+            f"📚 المادة: {subject_text}\n"
+            f"💰 المبلغ: {amount} JD\n"
+            f"⭐ النقاط الحالية: {student['points']}"
+        )
+
+        context.user_data.pop("admin_mode", None)
+        context.user_data.pop("pending_payment_student_id", None)
+        context.user_data.pop("pending_payment_subject", None)
+        return
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
         await update.message.reply_text(
