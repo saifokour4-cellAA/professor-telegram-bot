@@ -1271,7 +1271,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data.pop("admin_mode", None)
         return
-        
+
     # ===== ADMIN MODE : POST TO MAIN CHANNEL =====
     if mode == "post_main_channel":
         try:
@@ -1390,7 +1390,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_subject", None)
         return
 
-        known_buttons = {
+    known_buttons = {
         "✅ المواد الجاهزة الآن",
         "📚 المواد الأساسية",
         "🧪 اللابات",
@@ -1789,6 +1789,12 @@ async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = await ask_gpt(question)
 
     await update.message.reply_text(answer)
+    
+    
+async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
+    print("❌ Update caused error:", context.error)
+    
+
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -1819,6 +1825,8 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
+    
+    app.add_error_handler(error_handler)
 
     app.job_queue.run_daily(
         scheduled_ramadan_post,
