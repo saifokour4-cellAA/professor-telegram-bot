@@ -10,7 +10,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
-TOKEN = "8654189257:AAHbQPym3Sbn1VrrW3A1HfikrWzyRUr968Q"
+TOKEN = os.getenv("BOT_TOKEN")
+if not TOKEN:
+    raise RuntimeError("BOT_TOKEN is not set")
 
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
