@@ -739,7 +739,6 @@ async def send_about_professor(update: Update):
         "الفيدباك منهم يحكي القصة كلها ✨"
     )
 
-
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
@@ -857,6 +856,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+# ===================== الأوامر غير المعروفة =====================
 async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
 
@@ -865,13 +865,24 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
 
     uid = update.effective_user.id
 
-    # يسمح للأدمن يكتب /username مباشرة
     if uid in ADMIN_IDS:
         raw = text[1:].strip()
 
         known_commands = {
-            "start", "myid", "stats", "top", "ready_stats", "students_stats",
-            "points", "paid", "profits", "studentpay", "student", "myrequests"
+            "start",
+            "myid",
+            "stats",
+            "top",
+            "ready_stats",
+            "students_stats",
+            "points",
+            "paid",
+            "profits",
+            "studentpay",
+            "student",
+            "myrequests",
+            "leaderboard",
+            "subject"
         }
 
         if raw and " " not in raw and raw.lower() not in known_commands:
@@ -884,6 +895,36 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text("أمر غير معروف.")
 
 
+# ===================== leaderboard =====================
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    students = []
+    for student_id, student in STUDENTS_DATA["students"].items():
+        ensure_student_fields(student)
+
+        students.append({
+            "name": student.get("full_name", "بدون اسم"),
+            "username": student.get("username", ""),
+            "points": student.get("points", 0),
+            "paid": student.get("total_paid", 0)
+        })
+
+    students = sorted(students, key=lambda x: x["points"], reverse=True)
+
+    msg = "🏆 أعلى الطلاب بالنقاط\n\n"
+
+    for i, s in enumerate(students[:10], start=1):
+        username = f"@{s['username']}" if s["username"] else ""
+        msg += f"{i}) {s['name']} {username}\n⭐ {s['points']} نقطة | 💰 {s['paid']} JD\n\n"
+
+    await update.message.reply_text(msg)
+
+
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -894,6 +935,7 @@ def main():
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
+    app.add_handler(CommandHandler("subject", subject_stats))
     app.add_handler(CommandHandler("points", my_points))
     app.add_handler(CommandHandler("myrequests", my_requests))
 
@@ -901,6 +943,7 @@ def main():
     app.add_handler(CommandHandler("profits", profits))
     app.add_handler(CommandHandler("studentpay", student_payment))
     app.add_handler(CommandHandler("student", student_profile))
+    app.add_handler(CommandHandler("leaderboard", leaderboard))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
