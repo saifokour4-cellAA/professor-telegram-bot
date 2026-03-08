@@ -2,7 +2,7 @@ import logging
 import json
 import os
 import tempfile
-from datetime import datetime
+from datetime import datetime, date, time
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,12 +26,13 @@ ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
 MAIN_CHANNEL_ID = "@TheProfessoR199"
 
-# ===================== التخزين الدائم =====================
+# ===================== التخزين الدائم =====================# ===================== التخزين الدائم =====================
 DATA_DIR = "/data"
 os.makedirs(DATA_DIR, exist_ok=True)
 
 REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
 STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
+POSTED_RAMADAN_FILE = os.path.join(DATA_DIR, "posted_ramadan.json")
 
 
 def load_json_file(path, default_data):
@@ -68,8 +69,12 @@ if not os.path.exists(REQUESTS_FILE):
 if not os.path.exists(STUDENTS_FILE):
     save_json_file(STUDENTS_FILE, {"students": {}})
 
+if not os.path.exists(POSTED_RAMADAN_FILE):
+    save_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
+
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
+POSTED_RAMADAN_DATA = load_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
 
 DATA = REQUESTS_DATA
 
@@ -1377,6 +1382,267 @@ async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ تم إرسال رسالة تجريبية للقناة.")
     except Exception as e:
         await update.message.reply_text(f"❌ فشل الإرسال للقناة:\n{e}")
+        
+        
+RAMADAN_POSTS_BY_DATE = {
+    "2026-03-09": """🌙 إفطارًا هنيئًا يا أبطال البروفيسور 🤍
+اليوم 18 رمضان
+
+رمضان مو بس جوع وعطش…
+رمضان ترتيب روح، وترتيب عقل، وترتيب حياة ✨
+
+💡 معلومة البروفيسور الصحية:
+إذا طول اليوم عندك دوخة + عطش قوي + بول غامق + نشفان فم
+فهاي غالبًا علامات جفاف، ومش شطارة تتجاهلها.
+اشرب مي بين الإفطار والسحور بشكل موزع، مش دفعة وحدة 😌
+
+#البروفيسور #رمضان_كريم
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-10": """🌙 إفطارًا هنيئًا 🤍
+اليوم 19 رمضان
+
+كل يوم برمضان فرصة جديدة…
+يا ترفع نفسك، يا تضل مكانك.
+والشاطر بعرف كيف يربح الشهر قبل ما يخلص 🔥
+
+💡 معلومة البروفيسور الصحية:
+مريض السكري ما بزبط يغير الجرعات من راسه في رمضان.
+خصوصًا أدوية السكر أو الإنسولين اللي ممكن تعمل هبوط.
+لازم الخطة تكون مرتبة مع الطبيب أو الصيدلي قبل اللعب بأي جرعة.
+
+#البروفيسور #رمضان
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-11": """🌙 إفطارًا هنيئًا يا محترمين 🤍
+اليوم 20 رمضان
+
+رمضان بيعلمك إن السيطرة الحقيقية
+مش إنك تمنع الأكل بس…
+السيطرة الحقيقية إنك تمسك نفسك، لسانك، وعقلك.
+
+💡 معلومة البروفيسور الصحية:
+هبوط السكر ممكن يطلع على شكل:
+رجفة، تعرق، جوع شديد، خفقان، تشوش، دوخة.
+إذا صار هيك، لا تستهين بالموضوع.
+
+#البروفيسور #صحة_رمضان
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-12": """🌙 إفطارًا هنيئًا 🤍
+اليوم 21 رمضان
+
+دخلنا أيام عظيمة…
+الذكي هون ما بخفف،
+الذكي هون بشد 💙
+
+💡 معلومة البروفيسور الصحية:
+مريض الضغط أو القلب ما بوقف الدواء لأنه حاس حاله منيح.
+وفي رمضان، بعض أدوية الضغط والمدرات بدها تنظيم محترم،
+لأن الخطأ فيها ممكن يعمل هبوط أو جفاف.
+
+#البروفيسور #رمضان_مبارك
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-13": """🌙 إفطارًا هنيئًا 🤍
+اليوم 22 رمضان
+
+كل ما قرب رمضان يخلص،
+لا تخف الحماسة…
+خلي النهاية أقوى من البداية 🌟
+
+💡 معلومة البروفيسور التجميلية:
+إذا بشرتك ناشفة برمضان:
+لا تغسل وجهك كثير بمي سخنة،
+واستخدم مرطب مباشر بعد الغسل.
+
+#البروفيسور #SkinCare #رمضان
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-14": """🌙 إفطارًا هنيئًا 🤍
+اليوم 23 رمضان
+
+رمضان مو موسم أكل كثير…
+رمضان موسم بركة كثير ✨
+
+💡 معلومة البروفيسور الصحية:
+الإفطار الثقيل جدًا مرة وحدة
+ممكن يعمل خمول + ثقل + حموضة + ارتجاع.
+الأذكى؟
+افطر بشكل متدرج، وخلي جسمك يستقبل الأكل بهدوء.
+
+#البروفيسور #صحة_رمضان
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-15": """🌙 إفطارًا هنيئًا يا ملوك 🤍
+اليوم 24 رمضان
+
+في ناس بتفكر الراحة بالأكل…
+لكن أحيانًا الراحة الحقيقية تكون
+بالتوازن، والخفة، والهدوء.
+
+💡 معلومة البروفيسور الصحية:
+الماء هو بطل الترطيب الحقيقي.
+العصير مش بديل كامل، والقهوة والشاي مش هم الأساس.
+إذا بدك جسمك يصمد،
+وزع شرب الماء من الإفطار للسحور.
+
+#البروفيسور #رمضان_صحي
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-16": """🌙 إفطارًا هنيئًا 🤍
+اليوم 25 رمضان
+
+قربت النهاية…
+بس المؤمن الشاطر بعرف:
+إن أجمل أرباح رمضان ممكن تكون بآخر أيامه 🤍
+
+💡 معلومة البروفيسور الصيدلانية:
+إذا دواءك يؤخذ مرتين أو ثلاث باليوم،
+فمش دايمًا ينفع تنقله ببساطة بين الإفطار والسحور.
+بعض الأدوية بدها إعادة جدولة أو بديل أطول مفعولًا،
+وهذا شغل طبي/صيدلاني، مو اجتهاد فردي.
+
+#البروفيسور #Pharmacy #Ramadan
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-17": """🌙 إفطارًا هنيئًا 🤍
+اليوم 26 رمضان
+
+رمضان يصفّي القلب…
+بس كمان بده منك وعي،
+مو بس حماس.
+
+💡 معلومة البروفيسور الصحية:
+إذا عندك جفاف شديد، دوخة قوية، ضعف غير طبيعي، قلة تبول
+فهاي إشارات لازم تنأخذ بجدية.
+مش كل تعب بالصيام عادي.
+أحيانًا الجسم فعلاً قاعد يصرخلك.
+
+#البروفيسور #صحتك_أولاً
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-18": """🌙 إفطارًا هنيئًا 🤍
+اليوم 27 رمضان
+
+ليلة عظيمة…
+فلا تضيّعها بثقل المعدة وانشغال الجسد.
+خفف أكل… وعلّي روح ✨
+
+💡 معلومة البروفيسور الصحية:
+الإفطار الذكي مو كله مقليات وحلويات.
+الأفضل يكون فيه:
+نشويات مناسبة + بروتين + خضار + سوائل
+هيك طاقة أهدأ، وهضم أفضل، وخمول أقل.
+
+#البروفيسور #رمضان_كريم
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-19": """🌙 إفطارًا هنيئًا يا أبطال 🤍
+اليوم 28 رمضان
+
+الختام الجميل أهم من البداية القوية…
+شدّوا الهمة، لعلّ دعوة صادقة تغيّر كل شيء 🤍
+
+💡 معلومة البروفيسور الصحية/التجميلية:
+العصير—even لو طبيعي—
+مش مفتوح بلا حدود، لأنه يبقى محمل بالسكر.
+وإذا شفايفك ناشفة برمضان،
+استخدم lip balm أو petroleum jelly بشكل متكرر.
+
+#البروفيسور #Ramadan #Health
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot""",
+
+    "2026-03-20": """🌙 إفطارًا هنيئًا 🤍
+اليوم 29 رمضان
+
+اللهم كما بلغتنا آخر رمضان،
+فلا تخرجنا منه إلا وقد غفرت لنا وأصلحت قلوبنا 🌙
+
+💡 معلومة البروفيسور الصحية:
+الصداع في رمضان أحيانًا يكون من الجفاف،
+وأحيانًا من الكافيين، وأحيانًا من قلة النوم.
+فلا تعالج كل صداع بنفس الفكرة.
+رتب نومك، خفف انسحاب الكافيين تدريجيًا، واهتم بالماء.
+
+#البروفيسور #صحة
+
+@theproff991 | البروفيسوور
+بوت البروفيسور
+@theprofessor26bot"""
+}
+
+
+async def scheduled_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
+    today_str = datetime.now().strftime("%Y-%m-%d")
+
+    if today_str not in RAMADAN_POSTS_BY_DATE:
+        return
+
+    posted_dates = POSTED_RAMADAN_DATA.get("posted_dates", [])
+    if today_str in posted_dates:
+        return
+
+    post_text = RAMADAN_POSTS_BY_DATE[today_str]
+
+    try:
+        await context.bot.send_message(
+            chat_id=MAIN_CHANNEL_ID,
+            text=post_text
+        )
+
+        posted_dates.append(today_str)
+        POSTED_RAMADAN_DATA["posted_dates"] = posted_dates
+        save_json_file(POSTED_RAMADAN_FILE, POSTED_RAMADAN_DATA)
+
+        print(f"✅ Ramadan post sent for {today_str}")
+
+    except Exception as e:
+        print(f"❌ scheduled_ramadan_post failed: {e}")
+
+
+async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    await scheduled_ramadan_post(context)
+    await update.message.reply_text("✅ تم تنفيذ محاولة النشر الرمضاني لليوم.")
 
 
 # ===================== تشغيل البوت =====================
@@ -1401,15 +1667,20 @@ def main():
     app.add_handler(CommandHandler("dashboard", dashboard))
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("testchannel", test_channel))
+    app.add_handler(CommandHandler("postramadannow", post_ramadan_now))
 
     app.add_handler(CallbackQueryHandler(admin_buttons))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
 
+    app.job_queue.run_daily(
+        scheduled_ramadan_post,
+        time=time(hour=20, minute=0, second=0)
+    )
+
     print("Bot is running...")
     app.run_polling()
-
 
 if __name__ == "__main__":
     main()
