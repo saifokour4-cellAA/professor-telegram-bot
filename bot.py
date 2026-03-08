@@ -742,9 +742,28 @@ async def send_about_professor(update: Update):
 
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     text = (update.message.text or "").strip()
     user = update.effective_user
 
+    mode = context.user_data.get("admin_mode")
+
+    # ===== ADMIN MODE : STUDENT LOOKUP =====
+    if mode == "student_lookup":
+
+        student_id = resolve_student_id(text)
+
+        if not student_id:
+            await update.message.reply_text("لم أجد هذا الطالب.")
+            return
+
+        await update.message.reply_text(
+            build_student_profile_text(student_id)
+        )
+
+        context.user_data.pop("admin_mode", None)
+        return
+        
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
 
@@ -1137,34 +1156,59 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
+    # Dashboard
     if data == "admin_dashboard":
         await dashboard(query, context)
 
+    # Leaderboard
     elif data == "admin_leaderboard":
         await leaderboard(query, context)
 
+    # الأرباح
     elif data == "admin_profits":
         await profits(query, context)
 
+    # أكثر المواد طلبا
     elif data == "admin_top":
         await top(query, context)
 
+    # عدد الطلاب
     elif data == "admin_students":
         await students_stats(query, context)
 
+    # ملف طالب
     elif data == "admin_student":
+        context.user_data["admin_mode"] = "student_lookup"
+
         await query.message.reply_text(
-            "استخدم الأمر:\n/student @username"
+            "👤 أرسل الآن:\n\n"
+            "username@\n"
+            "أو\n"
+            "ID الطالب"
         )
 
+    # تأكيد دفع
     elif data == "admin_paid":
+        context.user_data["admin_mode"] = "confirm_payment"
+
         await query.message.reply_text(
-            "لتأكيد الدفع استخدم:\n/paid @username المادة - الامتحان 7"
+            "💳 أرسل معلومات الدفع بهذا الشكل:\n\n"
+            "username@\n"
+            "اسم المادة - الامتحان\n"
+            "المبلغ\n\n"
+            "مثال:\n"
+            "@ahmad\n"
+            "لاب مايكرو - ميد\n"
+            "7"
         )
 
+    # إحصائية مادة
     elif data == "admin_subject":
+        context.user_data["admin_mode"] = "subject_stats"
+
         await query.message.reply_text(
-            "إحصائية مادة:\n/subject لاب مايكرو - ميد"
+            "📊 أرسل اسم المادة بهذا الشكل:\n\n"
+            "لاب مايكرو - ميد"
         )
     
     
