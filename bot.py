@@ -1641,9 +1641,40 @@ async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    await scheduled_ramadan_post(context)
-    await update.message.reply_text("✅ تم تنفيذ محاولة النشر الرمضاني لليوم.")
+    today_str = datetime.now().strftime("%Y-%m-%d")
+    posted_dates = POSTED_RAMADAN_DATA.get("posted_dates", [])
 
+    if today_str not in RAMADAN_POSTS_BY_DATE:
+        await update.message.reply_text(
+            f"❌ لا يوجد منشور مربوط بتاريخ اليوم.\n"
+            f"📅 تاريخ السيرفر الحالي: {today_str}"
+        )
+        return
+
+    if today_str in posted_dates:
+        await update.message.reply_text(
+            f"⚠️ منشور اليوم مسجل بالفعل كمنشور سابقًا.\n"
+            f"📅 التاريخ: {today_str}"
+        )
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=MAIN_CHANNEL_ID,
+            text=RAMADAN_POSTS_BY_DATE[today_str]
+        )
+
+        posted_dates.append(today_str)
+        POSTED_RAMADAN_DATA["posted_dates"] = posted_dates
+        save_json_file(POSTED_RAMADAN_FILE, POSTED_RAMADAN_DATA)
+
+        await update.message.reply_text(
+            f"✅ تم نشر منشور رمضان بنجاح.\n"
+            f"📅 التاريخ: {today_str}"
+        )
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل النشر:\n{e}")
 
 # ===================== تشغيل البوت =====================
 def main():
