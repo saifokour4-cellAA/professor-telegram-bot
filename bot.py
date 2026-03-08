@@ -4,10 +4,26 @@ import os
 import tempfile
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, CallbackQueryHandler, filters
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ===================== إعدادات =====================
+TOKEN = "PUT_YOUR_NEW_BOT_TOKEN_HERE"
+
+ADMIN_ID = 8151228673
+ADMIN_IDS = {ADMIN_ID}
+ADMIN_USERNAME = "@theproff991"
+ADMIN_URL = "https://t.me/theproff991"
+
+# ===================== التخزين الدائم =====================
+DATA_DIR = "/data"
+os.makedirs(DATA_DIR, exist_ok=True)
+
+REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
+STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
+
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
@@ -22,8 +38,8 @@ def load_json_file(path, default_data):
         print(f"❌ Error reading {path}: {e}")
         return default_data
 
+
 def save_json_file(path, data):
-    # atomic write
     dirpath = os.path.dirname(path)
     os.makedirs(dirpath, exist_ok=True)
     fd, tmp_path = tempfile.mkstemp(dir=dirpath)
@@ -36,42 +52,6 @@ def save_json_file(path, data):
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-# ===================== إعدادات =====================
-TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
-ADMIN_ID = 8151228673
-ADMIN_IDS = {ADMIN_ID}
-ADMIN_USERNAME = "@theproff991"
-ADMIN_URL = "https://t.me/theproff991"
-# ===================== التخزين الدائم =====================
-
-DATA_DIR = "data"
-os.makedirs(DATA_DIR, exist_ok=True)
-
-REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
-STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
-
-
-# ===================== تحميل ملف JSON =====================
-
-def load_json_file(path, default_data):
-    if not os.path.exists(path):
-        return default_data
-
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return default_data
-
-
-# ===================== حفظ ملف JSON =====================
-
-def save_json_file(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
-# ===================== إنشاء الملفات إذا لم تكن موجودة =====================
 
 if not os.path.exists(REQUESTS_FILE):
     save_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
@@ -79,19 +59,13 @@ if not os.path.exists(REQUESTS_FILE):
 if not os.path.exists(STUDENTS_FILE):
     save_json_file(STUDENTS_FILE, {"students": {}})
 
-
-# ===================== تحميل البيانات =====================
-
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 
 DATA = REQUESTS_DATA
 
 
-# ===================== حفظ الطالب =====================
-
 def save_student(user):
-
     user_id = str(user.id)
 
     if user_id not in STUDENTS_DATA["students"]:
@@ -99,30 +73,50 @@ def save_student(user):
             "id": user.id,
             "full_name": user.full_name,
             "username": user.username if user.username else "",
-            "points": 0
+            "first_name": user.first_name if user.first_name else "",
+            "points": 0,
+            "last_seen": "active"
         }
+    else:
+        STUDENTS_DATA["students"][user_id]["full_name"] = user.full_name
+        STUDENTS_DATA["students"][user_id]["username"] = user.username if user.username else ""
+        STUDENTS_DATA["students"][user_id]["first_name"] = user.first_name if user.first_name else ""
+        if "points" not in STUDENTS_DATA["students"][user_id]:
+            STUDENTS_DATA["students"][user_id]["points"] = 0
+        STUDENTS_DATA["students"][user_id]["last_seen"] = "active"
 
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
 
-# ===================== إضافة نقاط =====================
-
 def add_points(user_id, points):
-
     user_id = str(user_id)
 
     if user_id not in STUDENTS_DATA["students"]:
         return
 
-    STUDENTS_DATA["students"][user_id]["points"] += points
+    if "points" not in STUDENTS_DATA["students"][user_id]:
+        STUDENTS_DATA["students"][user_id]["points"] = 0
 
+    STUDENTS_DATA["students"][user_id]["points"] += points
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
 
-# ===================== تسجيل طلب مادة =====================
+async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        username = f"@{user.username}" if user.username else "بدون يوزرنيم"
+        msg = (
+            "📊 طلب جديد على مادة\n\n"
+            f"📚 المادة: {subject}\n"
+            f"👤 الطالب: {user.full_name}\n"
+            f"🔗 الحساب: {username}\n"
+            f"📈 العدد الكلي: {count}"
+        )
+        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+    except Exception as e:
+        print(f"❌ notify_admin_new_interest failed: {e}")
+
 
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
-
     user_id = str(user.id)
 
     save_student(user)
@@ -132,14 +126,15 @@ async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYP
         DATA["who"][subject] = []
 
     if user_id not in DATA["who"][subject]:
-
         DATA["who"][subject].append(user_id)
         DATA["counts"][subject] += 1
 
-        # إضافة نقطة للطالب
         add_points(user.id, 1)
 
         save_json_file(REQUESTS_FILE, DATA)
+        await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
+
+
 # ===================== المواد =====================
 READY_SUBJECTS = {
     "لاب مايكرو": (
@@ -154,7 +149,6 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-
     "فايتو صيدلة": (
         "🌿 قناة متوقّع البروفيسور – فايتو صيدلة\n\n"
         "القناة تحتوي على:\n"
@@ -165,7 +159,6 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-}
     "فايتوثيرابي صيدلة": (
         "🌿 قناة متوقّع البروفيسور – فايتوثيرابي صيدلة\n\n"
         "القناة تحتوي على:\n"
@@ -174,6 +167,18 @@ READY_SUBJECTS = {
         "💳 الدفع عبر زين كاش:\n"
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
+    ),
+    "ميدو 2": (
+        "😎 طلاب ميدو 2\n"
+        "فيرست\n\n"
+        "📚 فيديوهات سنوات + متوقّع البروفيسور\n"
+        "⏱️ مدة الشرح تقريبًا ساعتين\n"
+        "شرح السؤال كامل + مراجعة نوع الدواء + SAR خطوة خطوة 👨‍🏫\n\n"
+        "💰 سعر الاشتراك: ٨ دنانير\n\n"
+        "💳 الدفع عبر زين كاش:\n"
+        "📱 0798024692\n\n"
+        "📸 يرجى تصوير وصل التحويل\n"
+        "وإرساله عالخاص للتأكيد ✔"
     ),
 }
 
@@ -221,7 +226,6 @@ PHARMD_SUBJECTS = [
 ]
 
 ALL_SUBJECTS = set(BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS)
-VOTE_SUBJECTS = BASIC_SUBJECTS + LAB_SUBJECTS + PHARMD_SUBJECTS
 
 MAIN_MENU = [
     ["✅ المواد الجاهزة الآن", "📚 المواد الأساسية"],
@@ -230,6 +234,13 @@ MAIN_MENU = [
     ["👨‍🏫 من هو البروفيسور؟"],
 ]
 
+EXAM_TYPE_MENU = [
+    ["فيرست", "سكند"],
+    ["فاينال", "ميد"],
+    ["⬅️ رجوع للقائمة الرئيسية"],
+]
+
+
 # ===================== أدوات مساعدة =====================
 def chunk_buttons(items, per_row=2):
     rows = []
@@ -237,42 +248,21 @@ def chunk_buttons(items, per_row=2):
         rows.append(items[i:i + per_row])
     return rows
 
+
 def main_keyboard():
     return ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
+
 
 def section_keyboard(items):
     rows = chunk_buttons(items, 2)
     rows.append(["⬅️ رجوع للقائمة الرئيسية"])
     return ReplyKeyboardMarkup(rows, resize_keyboard=True)
 
-async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        username = f"@{user.username}" if user.username else "بدون يوزرنيم"
-        msg = (
-            "📊 طلب جديد على مادة\n\n"
-            f"📚 المادة: {subject}\n"
-            f"👤 الطالب: {user.full_name}\n"
-            f"🔗 الحساب: {username}\n"
-            f"📈 العدد الكلي: {count}"
-        )
-        await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
-    except Exception as e:
-        print(f"❌ notify_admin_new_interest failed: {e}")
-        
-async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(user.id)
 
-    save_student(user)
+def exam_type_keyboard():
+    return ReplyKeyboardMarkup(EXAM_TYPE_MENU, resize_keyboard=True)
 
-    if subject not in DATA["counts"]:
-        DATA["counts"][subject] = 0
-        DATA["who"][subject] = []
 
-    if user_id not in DATA["who"][subject]:
-        DATA["who"][subject].append(user_id)
-        DATA["counts"][subject] += 1
-        save_json_file(REQUESTS_FILE, DATA)
-        await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
 # ===================== أوامر =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_student(update.effective_user)
@@ -331,47 +321,6 @@ async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
-async def voters_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    if not VOTERS:
-        await update.message.reply_text("لا يوجد مصوتون بعد.")
-        return
-
-    msg = "🗳️ تفاصيل المصوتين:\n\n"
-
-    for subject in sorted(VOTERS.keys(), key=lambda s: VOTES.get(s, 0), reverse=True):
-        voter_ids = VOTERS.get(subject, [])
-        msg += f"📚 {subject} ({len(voter_ids)})\n"
-
-        if not voter_ids:
-            msg += "— لا يوجد أحد\n\n"
-            continue
-
-        for voter_id in voter_ids:
-            student = STUDENTS_DATA["students"].get(str(voter_id), {})
-            full_name = student.get("full_name", "بدون اسم")
-            username = student.get("username", "")
-
-            if username:
-                msg += f"• {full_name} (@{username})\n"
-            else:
-                msg += f"• {full_name}\n"
-
-        msg += "\n"
-
-    if len(msg) <= 4000:
-        await update.message.reply_text(msg)
-    else:
-        parts = [msg[i:i+4000] for i in range(0, len(msg), 4000)]
-        for part in parts:
-            await update.message.reply_text(part)
-
-
 async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -380,7 +329,7 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     counts = DATA.get("counts", {})
-    ready_counts = {k: v for k, v in counts.items() if k in READY_SUBJECTS}
+    ready_counts = {k: v for k, v in counts.items() if any(k.startswith(rs) for rs in READY_SUBJECTS)}
 
     if not ready_counts:
         await update.message.reply_text("لا توجد طلبات على المواد الجاهزة بعد.")
@@ -403,19 +352,38 @@ async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     students_count = len(STUDENTS_DATA["students"])
     await update.message.reply_text(f"👨‍🎓 عدد الطلاب المحفوظين: {students_count}")
+
+
+async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+
+    student = STUDENTS_DATA["students"].get(user_id)
+    if not student:
+        await update.message.reply_text("لا يوجد لديك حساب نقاط بعد.")
+        return
+
+    points = student.get("points", 0)
+    await update.message.reply_text(
+        f"⭐ نقاطك مع البروفيسور: {points}\n\n"
+        "كلما زادت نقاطك اقتربت من خصومات أفضل."
+    )
+
+
 # ===================== الرسائل العامة =====================
 async def send_subscription_guide(update: Update):
     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
     await update.message.reply_text(
         "💳 طريقة الاشتراك:\n\n"
         "1) اختر المادة\n"
-        "2) حوّل المبلغ عبر زين كاش\n"
-        "3) اضغط زر إرسال وصل الدفع\n"
-        "4) ابعت صورة الوصل للبروفيسور\n"
-        "5) بعد التأكيد رح تستلم رابط القناة\n\n"
+        "2) اختر نوع الامتحان\n"
+        "3) حوّل المبلغ عبر زين كاش\n"
+        "4) اضغط زر إرسال وصل الدفع\n"
+        "5) ابعت صورة الوصل للبروفيسور\n"
+        "6) بعد التأكيد رح تستلم رابط القناة\n\n"
         "📱 زين كاش: 0798024692",
         reply_markup=InlineKeyboardMarkup(btns),
     )
+
 
 async def send_contact(update: Update):
     btns = [[InlineKeyboardButton("📩 افتح محادثة مع البروفيسور", url=ADMIN_URL)]]
@@ -423,6 +391,8 @@ async def send_contact(update: Update):
         "للتواصل المباشر مع البروفيسور اضغط الزر بالأسفل 👇",
         reply_markup=InlineKeyboardMarkup(btns),
     )
+
+
 async def send_about_professor(update: Update):
     await update.message.reply_text(
         "👨‍🏫 من هو البروفيسور؟\n\n"
@@ -442,12 +412,17 @@ async def send_about_professor(update: Update):
         "اسألوا زملاءكم اللي درسوا معه…\n"
         "الفيدباك منهم يحكي القصة كلها ✨"
     )
+
+
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user = update.effective_user
 
     if text == "⬅️ رجوع للقائمة الرئيسية":
+        context.user_data.pop("pending_subject", None)
+        context.user_data.pop("pending_ready", None)
+
         await update.message.reply_text(
             "رجعناك للقائمة الرئيسية ✅",
             reply_markup=main_keyboard()
@@ -495,47 +470,80 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if text in READY_SUBJECTS:
-        await register_request(text, user, context)
+        context.user_data["pending_subject"] = text
+        context.user_data["pending_ready"] = True
 
-        btns = [[InlineKeyboardButton("📩 إرسال وصل الدفع للبروفيسور", url=ADMIN_URL)]]
         await update.message.reply_text(
-            READY_SUBJECTS[text],
-            reply_markup=InlineKeyboardMarkup(btns)
+            f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
+            reply_markup=exam_type_keyboard()
         )
         return
 
     if text in ALL_SUBJECTS:
-        await register_request(text, user, context)
+        context.user_data["pending_subject"] = text
+        context.user_data["pending_ready"] = text in READY_SUBJECTS
 
-        btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
         await update.message.reply_text(
-            f"📚 المادة: {text}\n\n"
-            "✅ تم تسجيل طلبك بنجاح.\n\n"
-            "إذا وصلنا لعدد كافٍ من الطلبات على هذه المادة،\n"
-            "رح نعلن عنها رسميًا على القناة إن شاء الله.\n\n"
-            "📩 وإذا بدك تستفسر أكثر، تواصل مع البروفيسور من الزر بالأسفل.",
-            reply_markup=InlineKeyboardMarkup(btns)
+            f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
+            reply_markup=exam_type_keyboard()
         )
+        return
+
+    if text in ["فيرست", "سكند", "فاينال", "ميد"]:
+        pending_subject = context.user_data.get("pending_subject")
+        pending_ready = context.user_data.get("pending_ready", False)
+
+        if not pending_subject:
+            await update.message.reply_text(
+                "اختار المادة أولًا 👇",
+                reply_markup=main_keyboard()
+            )
+            return
+
+        full_subject = f"{pending_subject} - {text}"
+
+        await register_request(full_subject, user, context)
+
+        if pending_ready:
+            btns = [[InlineKeyboardButton("📩 إرسال وصل الدفع للبروفيسور", url=ADMIN_URL)]]
+            await update.message.reply_text(
+                READY_SUBJECTS[pending_subject] + f"\n\n📝 الامتحان المختار: {text}",
+                reply_markup=InlineKeyboardMarkup(btns)
+            )
+        else:
+            btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
+            await update.message.reply_text(
+                f"📚 المادة: {pending_subject}\n"
+                f"📝 الامتحان: {text}\n\n"
+                "✅ تم تسجيل طلبك بنجاح.\n\n"
+                "إذا وصلنا لعدد كافٍ من الطلبات على هذا الجزء،\n"
+                "رح نعلن عنه رسميًا على القناة إن شاء الله.\n\n"
+                "📩 وإذا بدك تستفسر أكثر، تواصل مع البروفيسور من الزر بالأسفل.",
+                reply_markup=InlineKeyboardMarkup(btns)
+            )
+
+        context.user_data.pop("pending_subject", None)
+        context.user_data.pop("pending_ready", None)
         return
 
     await update.message.reply_text(
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
     )
-# ===================== تشغيل البوت =====================
 
+
+# ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
-    # الأوامر
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
+    app.add_handler(CommandHandler("points", my_points))
 
-    # الرسائل
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
     print("Bot is running...")
@@ -544,4 +552,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
