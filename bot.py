@@ -112,36 +112,46 @@ def add_points(user_id, points):
 async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
     try:
         username = f"@{user.username}" if user.username else "بدون يوزرنيم"
+
         msg = (
             "📊 طلب جديد على مادة\n\n"
             f"📚 المادة: {subject}\n"
             f"👤 الطالب: {user.full_name}\n"
             f"🔗 الحساب: {username}\n"
+            f"🆔 ID: {user.id}\n"
             f"📈 العدد الكلي: {count}"
         )
+
         await context.bot.send_message(chat_id=ADMIN_ID, text=msg)
+        print(f"✅ Admin notified successfully: {subject} / {user.id}")
+
     except Exception as e:
         print(f"❌ notify_admin_new_interest failed: {e}")
-
 
 async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(user.id)
 
-    save_student(user)
+    try:
+        save_student(user)
 
-    if subject not in DATA["counts"]:
-        DATA["counts"][subject] = 0
-        DATA["who"][subject] = []
+        if subject not in DATA["counts"]:
+            DATA["counts"][subject] = 0
+            DATA["who"][subject] = []
 
-    if user_id not in DATA["who"][subject]:
-        DATA["who"][subject].append(user_id)
-        DATA["counts"][subject] += 1
+        is_new_request = user_id not in DATA["who"][subject]
 
-        add_points(user.id, 1)
-        save_json_file(REQUESTS_FILE, DATA)
+        if is_new_request:
+            DATA["who"][subject].append(user_id)
+            DATA["counts"][subject] += 1
 
+            add_points(user.id, 1)
+            save_json_file(REQUESTS_FILE, DATA)
+
+        # مهم: الإشعار ينرسل دائمًا حتى لو الطالب مكرر
         await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
 
+    except Exception as e:
+        print(f"❌ register_request failed: {e}")
 # ===================== المواد الجاهزة حسب المادة + نوع الامتحان =====================
 READY_SUBJECTS = {
     ("لاب مايكرو", "ميد"): (
@@ -300,7 +310,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
-
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
