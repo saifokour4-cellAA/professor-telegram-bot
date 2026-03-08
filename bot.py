@@ -1390,7 +1390,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_subject", None)
         return
 
-            known_buttons = {
+        known_buttons = {
         "✅ المواد الجاهزة الآن",
         "📚 المواد الأساسية",
         "🧪 اللابات",
