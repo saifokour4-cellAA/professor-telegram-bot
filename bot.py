@@ -925,6 +925,46 @@ async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
 
 
+async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "استخدم الأمر هكذا:\n"
+            "/subject لاب مايكرو - ميد"
+        )
+        return
+
+    subject_name = " ".join(context.args).strip()
+
+    request_count = DATA.get("counts", {}).get(subject_name, 0)
+
+    paid_count = 0
+    total_revenue = 0
+
+    for student_id, student in STUDENTS_DATA["students"].items():
+
+        subscriptions = student.get("subscriptions", {})
+
+        if subject_name in subscriptions:
+            paid_count += 1
+            amount = subscriptions[subject_name].get("amount", 0)
+            total_revenue += amount
+
+    msg = (
+        f"📚 المادة: {subject_name}\n\n"
+        f"📈 عدد الطلبات: {request_count}\n"
+        f"💰 عدد المشتركين الدافعين: {paid_count}\n"
+        f"💵 مجموع الربح: {total_revenue} JD"
+    )
+
+    await update.message.reply_text(msg)
+    
+    
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
