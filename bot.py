@@ -5,14 +5,20 @@ import tempfile
 from datetime import datetime
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.ext import CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    CallbackQueryHandler,
+    filters,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
-TOKEN = os.getenv("BOT_TOKEN") or "8654189257:AAHQ7Jdn5-vmLsD5jP4SC-WwrkyWxJO9Fhc"
+TOKEN = "8654189257:AAHQ7Jdn5-vmLsD5jP4SC-WwrkyWxJO9Fhc"
 
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
@@ -66,8 +72,7 @@ STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 
 DATA = REQUESTS_DATA
 
-
-# ===================== أدوات مساعدة للطلاب =====================
+# ===================== أدوات مساعدة =====================
 def normalize_text(text: str) -> str:
     return " ".join((text or "").strip().lower().split())
 
@@ -110,7 +115,7 @@ def save_student(user):
             "total_paid": 0,
             "payments": [],
             "subscriptions": {},
-            "requested_subjects": []
+            "requested_subjects": [],
         }
     else:
         student = STUDENTS_DATA["students"][user_id]
@@ -123,30 +128,16 @@ def save_student(user):
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
 
-def add_points(user_id, points):
-    user_id = str(user_id)
-
-    if user_id not in STUDENTS_DATA["students"]:
-        return
-
-    student = STUDENTS_DATA["students"][user_id]
-    ensure_student_fields(student)
-    student["points"] += points
-    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
-
-
 def resolve_student_id(target_text: str):
-    target_text = target_text.strip()
+    target_text = (target_text or "").strip()
 
     if not target_text:
         return None
 
-    # 1) ID
     if target_text.isdigit():
         if target_text in STUDENTS_DATA["students"]:
             return target_text
 
-    # 2) username
     if target_text.startswith("@"):
         search_username = normalize_text(target_text[1:])
         for student_id, student in STUDENTS_DATA["students"].items():
@@ -154,7 +145,6 @@ def resolve_student_id(target_text: str):
             if username == search_username:
                 return student_id
 
-    # 3) full name exact
     search_name = normalize_text(target_text)
     for student_id, student in STUDENTS_DATA["students"].items():
         full_name = normalize_text(student.get("full_name", ""))
@@ -209,6 +199,175 @@ def build_student_profile_text(student_id: str) -> str:
         f"✅ كل ما اشترك به ودفعه:\n{subscriptions_text}\n\n"
         f"🧾 سجل الدفعات:\n{payments_text}"
     )
+    return msg
+
+
+def build_dashboard_text() -> str:
+    students_count = len(STUDENTS_DATA["students"])
+    total_revenue = 0
+    total_points = 0
+    subject_revenue = {}
+
+    for student in STUDENTS_DATA["students"].values():
+        ensure_student_fields(student)
+        total_revenue += student.get("total_paid", 0)
+        total_points += student.get("points", 0)
+
+        for payment in student.get("payments", []):
+            subject = payment.get("subject", "بدون مادة")
+            amount = payment.get("amount", 0)
+            subject_revenue[subject] = subject_revenue.get(subject, 0) + amount
+
+    most_requested = None
+    if DATA.get("counts"):
+        most_requested = max(DATA["counts"].items(), key=lambda x: x[1])
+
+    most_profitable = None
+    if subject_revenue:
+        most_profitable = max(subject_revenue.items(), key=lambda x: x[1])
+
+    best_student = None
+    if STUDENTS_DATA["students"]:
+        best_student = max(
+            STUDENTS_DATA["students"].values(),
+            key=lambda s: s.get("points", 0)
+        )
+
+    msg = (
+        "📊 لوحة تحكم البروفيسور\n\n"
+        f"👨‍🎓 عدد الطلاب: {students_count}\n"
+        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
+        f"⭐ مجموع النقاط: {total_points}\n\n"
+    )
+
+    if most_requested:
+        msg += f"🔥 أكثر مادة طلبًا:\n{most_requested[0]} ({most_requested[1]} طلب)\n\n"
+
+    if most_profitable:
+        msg += f"💵 أكثر مادة ربحًا:\n{most_profitable[0]} ({most_profitable[1]} JD)\n\n"
+
+    if best_student:
+        username = f"@{best_student.get('username','')}" if best_student.get("username") else ""
+        msg += (
+            "🏆 أفضل طالب:\n"
+            f"{best_student.get('full_name','')} {username}\n"
+            f"⭐ {best_student.get('points',0)} نقطة\n"
+            f"💰 {best_student.get('total_paid',0)} JD\n"
+        )
+
+    return msg
+
+
+def build_leaderboard_text() -> str:
+    students = []
+    for student in STUDENTS_DATA["students"].values():
+        ensure_student_fields(student)
+        students.append({
+            "name": student.get("full_name", "بدون اسم"),
+            "username": student.get("username", ""),
+            "points": student.get("points", 0),
+            "paid": student.get("total_paid", 0),
+        })
+
+    students = sorted(students, key=lambda x: x["points"], reverse=True)
+
+    if not students:
+        return "لا توجد بيانات طلاب بعد."
+
+    msg = "🏆 أعلى الطلاب بالنقاط\n\n"
+    for i, s in enumerate(students[:10], start=1):
+        username = f"@{s['username']}" if s["username"] else ""
+        msg += f"{i}) {s['name']} {username}\n⭐ {s['points']} نقطة | 💰 {s['paid']} JD\n\n"
+    return msg
+
+
+def build_profits_text() -> str:
+    total_revenue = 0
+    paid_students = 0
+    subject_revenue = {}
+
+    for student in STUDENTS_DATA["students"].values():
+        ensure_student_fields(student)
+
+        amount = student.get("total_paid", 0)
+        if amount > 0:
+            paid_students += 1
+            total_revenue += amount
+
+        for payment in student.get("payments", []):
+            subject = payment.get("subject", "بدون مادة")
+            value = payment.get("amount", 0)
+            subject_revenue[subject] = subject_revenue.get(subject, 0) + value
+
+    msg = (
+        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
+        f"👨‍🎓 عدد الطلاب الدافعين: {paid_students}\n\n"
+    )
+
+    if subject_revenue:
+        msg += "📚 الأرباح حسب المادة:\n"
+        for subject, value in sorted(subject_revenue.items(), key=lambda x: x[1], reverse=True):
+            msg += f"• {subject}: {value} JD\n"
+
+    return msg
+
+
+def build_top_text() -> str:
+    counts = DATA.get("counts", {})
+    if not counts:
+        return "لا توجد بيانات بعد."
+
+    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    msg = "🔥 أعلى 10 مواد طلبًا:\n\n"
+    for i, (subject, count) in enumerate(items, start=1):
+        msg += f"{i}) {subject} — {count}\n"
+    return msg
+
+
+def build_students_stats_text() -> str:
+    students_count = len(STUDENTS_DATA["students"])
+    return f"👨‍🎓 عدد الطلاب المحفوظين: {students_count}"
+
+
+def build_subject_stats_text(subject_name: str) -> str:
+    request_count = DATA.get("counts", {}).get(subject_name, 0)
+
+    paid_students = []
+    total_revenue = 0
+
+    for student in STUDENTS_DATA["students"].values():
+        ensure_student_fields(student)
+        subscriptions = student.get("subscriptions", {})
+
+        if subject_name in subscriptions:
+            amount = subscriptions[subject_name].get("amount", 0)
+            total_revenue += amount
+
+            paid_students.append({
+                "name": student.get("full_name", "بدون اسم"),
+                "username": student.get("username", ""),
+                "points": student.get("points", 0),
+                "amount": amount
+            })
+
+    msg = (
+        f"📚 المادة: {subject_name}\n\n"
+        f"📈 عدد الطلبات: {request_count}\n"
+        f"💰 عدد المشتركين: {len(paid_students)}\n"
+        f"💵 مجموع الربح: {total_revenue} JD\n\n"
+    )
+
+    if paid_students:
+        msg += "👨‍🎓 الطلاب المشتركين:\n\n"
+        for i, s in enumerate(paid_students, start=1):
+            username = f"@{s['username']}" if s["username"] else ""
+            msg += (
+                f"{i}) {s['name']} {username}\n"
+                f"💰 دفع: {s['amount']} JD\n"
+                f"⭐ نقاطه: {s['points']}\n\n"
+            )
+    else:
+        msg += "لا يوجد طلاب دافعين لهذه المادة."
 
     return msg
 
@@ -279,7 +438,6 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-
     ("فايتو صيدلة", "فيرست"): (
         "🌿 قناة متوقّع البروفيسور – فايتو صيدلة\n\n"
         "القناة تحتوي على:\n"
@@ -290,7 +448,6 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-
     ("فايتوثيرابي صيدلة", "فيرست"): (
         "🌿 قناة متوقّع البروفيسور – فايتوثيرابي صيدلة\n\n"
         "القناة تحتوي على:\n"
@@ -300,7 +457,6 @@ READY_SUBJECTS = {
         "📱 0798024692\n\n"
         "📸 بعد التحويل اضغط الزر بالأسفل وابعت صورة الوصل للبروفيسور."
     ),
-
     ("ميدو 2", "فيرست"): (
         "😎 طلاب ميدو 2\n"
         "فيرست\n\n"
@@ -313,7 +469,6 @@ READY_SUBJECTS = {
         "📸 يرجى تصوير وصل التحويل\n"
         "وإرساله عالخاص للتأكيد ✔"
     ),
-
     ("ميدو 1", "فيرست"): (
         "😎 طلاب ميدو 1\n"
         "فيرست\n\n"
@@ -388,8 +543,7 @@ EXAM_TYPE_MENU = [
     ["⬅️ رجوع للقائمة الرئيسية"],
 ]
 
-
-# ===================== أدوات مساعدة =====================
+# ===================== أدوات واجهة =====================
 def chunk_buttons(items, per_row=2):
     rows = []
     for i in range(0, len(items), per_row):
@@ -414,7 +568,6 @@ def exam_type_keyboard():
 # ===================== أوامر =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_student(update.effective_user)
-
     await update.message.reply_text(
         "👋 أهلاً بك في بوت البروفيسور\n\n"
         "💪 معنا رح تضمن التفوق وبشهادة الجميع\n\n"
@@ -429,7 +582,6 @@ async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
@@ -441,7 +593,6 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     items = sorted(counts.items(), key=lambda x: x[1], reverse=True)
     msg = "📊 إحصائيات الطلب على المواد:\n\n"
-
     for subject, count in items:
         msg += f"• {subject} : {count}\n"
 
@@ -450,28 +601,14 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def top(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
-
-    counts = DATA.get("counts", {})
-    if not counts:
-        await update.message.reply_text("لا توجد بيانات بعد.")
-        return
-
-    items = sorted(counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    msg = "🔥 أعلى 10 مواد طلبًا:\n\n"
-
-    for i, (subject, count) in enumerate(items, start=1):
-        msg += f"{i}) {subject} — {count}\n"
-
-    await update.message.reply_text(msg)
+    await update.message.reply_text(build_top_text())
 
 
 async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
@@ -487,7 +624,6 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     msg = "✅ إحصائيات المواد الجاهزة:\n\n"
-
     for subject, count in sorted(ready_counts.items(), key=lambda x: x[1], reverse=True):
         msg += f"• {subject} : {count}\n"
 
@@ -496,18 +632,14 @@ async def ready_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def students_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
-
-    students_count = len(STUDENTS_DATA["students"])
-    await update.message.reply_text(f"👨‍🎓 عدد الطلاب المحفوظين: {students_count}")
+    await update.message.reply_text(build_students_stats_text())
 
 
 async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-
     student = STUDENTS_DATA["students"].get(user_id)
     if not student:
         await update.message.reply_text("لا يوجد لديك حساب نقاط بعد.")
@@ -524,7 +656,6 @@ async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
-
     student = STUDENTS_DATA["students"].get(user_id)
     if not student:
         await update.message.reply_text("لا توجد لديك طلبات مسجلة بعد.")
@@ -546,7 +677,6 @@ async def my_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
@@ -575,7 +705,6 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     found_student_id = resolve_student_id(target_text)
-
     if not found_student_id:
         await update.message.reply_text("لم أجد هذا الطالب في البيانات.")
         return
@@ -631,44 +760,14 @@ async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def profits(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
-
-    total_revenue = 0
-    paid_students = 0
-    subject_revenue = {}
-
-    for student in STUDENTS_DATA["students"].values():
-        ensure_student_fields(student)
-
-        amount = student.get("total_paid", 0)
-        if amount > 0:
-            paid_students += 1
-            total_revenue += amount
-
-        for payment in student.get("payments", []):
-            subject = payment.get("subject", "بدون مادة")
-            value = payment.get("amount", 0)
-            subject_revenue[subject] = subject_revenue.get(subject, 0) + value
-
-    msg = (
-        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
-        f"👨‍🎓 عدد الطلاب الدافعين: {paid_students}\n\n"
-    )
-
-    if subject_revenue:
-        msg += "📚 الأرباح حسب المادة:\n"
-        for subject, value in sorted(subject_revenue.items(), key=lambda x: x[1], reverse=True):
-            msg += f"• {subject}: {value} JD\n"
-
-    await update.message.reply_text(msg)
+    await update.message.reply_text(build_profits_text())
 
 
 async def student_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
-
     if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
@@ -694,6 +793,39 @@ async def student_profile(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def student_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await student_profile(update, context)
+
+
+async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+    await update.message.reply_text(build_leaderboard_text())
+
+
+async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "استخدم الأمر هكذا:\n"
+            "/subject لاب مايكرو - ميد"
+        )
+        return
+
+    subject_name = " ".join(context.args).strip()
+    await update.message.reply_text(build_subject_stats_text(subject_name))
+
+
+async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+    await update.message.reply_text(build_dashboard_text())
 
 
 # ===================== الرسائل العامة =====================
@@ -740,33 +872,185 @@ async def send_about_professor(update: Update):
         "الفيدباك منهم يحكي القصة كلها ✨"
     )
 
+
+# ===================== لوحة الأدمن =====================
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    buttons = [
+        [InlineKeyboardButton("📊 Dashboard", callback_data="admin_dashboard")],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")],
+        [InlineKeyboardButton("💰 الأرباح", callback_data="admin_profits")],
+        [InlineKeyboardButton("📚 أكثر المواد طلبًا", callback_data="admin_top")],
+        [InlineKeyboardButton("👨‍🎓 عدد الطلاب", callback_data="admin_students")],
+        [InlineKeyboardButton("👤 ملف طالب", callback_data="admin_student")],
+        [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
+        [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")],
+    ]
+
+    await update.message.reply_text(
+        "⚙️ لوحة تحكم البروفيسور",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
+
+
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+
+    if data == "admin_dashboard":
+        await query.message.reply_text(build_dashboard_text())
+
+    elif data == "admin_leaderboard":
+        await query.message.reply_text(build_leaderboard_text())
+
+    elif data == "admin_profits":
+        await query.message.reply_text(build_profits_text())
+
+    elif data == "admin_top":
+        await query.message.reply_text(build_top_text())
+
+    elif data == "admin_students":
+        await query.message.reply_text(build_students_stats_text())
+
+    elif data == "admin_student":
+        context.user_data["admin_mode"] = "student_lookup"
+        await query.message.reply_text(
+            "👤 أرسل الآن:\n\n"
+            "@username\n"
+            "أو\n"
+            "ID الطالب"
+        )
+
+    elif data == "admin_subject":
+        context.user_data["admin_mode"] = "subject_stats"
+        await query.message.reply_text(
+            "📊 أرسل اسم المادة:\n\n"
+            "لاب مايكرو - ميد"
+        )
+
+    elif data == "admin_paid":
+        context.user_data["admin_mode"] = "confirm_payment"
+        await query.message.reply_text(
+            "💳 أرسل معلومات الدفع بهذا الشكل:\n\n"
+            "@username\n"
+            "المادة - الامتحان\n"
+            "المبلغ\n\n"
+            "مثال:\n"
+            "@ahmad\n"
+            "لاب مايكرو - ميد\n"
+            "7"
+        )
+
+
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     text = (update.message.text or "").strip()
     user = update.effective_user
 
     mode = context.user_data.get("admin_mode")
 
-    # ===== ADMIN MODE : STUDENT LOOKUP =====
     if mode == "student_lookup":
-
         student_id = resolve_student_id(text)
 
         if not student_id:
             await update.message.reply_text("لم أجد هذا الطالب.")
             return
 
+        await update.message.reply_text(build_student_profile_text(student_id))
+        context.user_data.pop("admin_mode", None)
+        return
+
+    if mode == "subject_stats":
+        subject_name = text.strip()
+        await update.message.reply_text(build_subject_stats_text(subject_name))
+        context.user_data.pop("admin_mode", None)
+        return
+
+    if mode == "confirm_payment":
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+        if len(lines) < 3:
+            await update.message.reply_text(
+                "الرجاء إرسالها بهذا الشكل:\n\n"
+                "@username\n"
+                "المادة - الامتحان\n"
+                "المبلغ"
+            )
+            return
+
+        target_text = lines[0]
+        subject_text = lines[1]
+        amount_text = lines[2]
+
+        found_student_id = resolve_student_id(target_text)
+        if not found_student_id:
+            await update.message.reply_text("لم أجد هذا الطالب.")
+            return
+
+        try:
+            amount = float(amount_text)
+        except Exception:
+            await update.message.reply_text("المبلغ غير صحيح.")
+            return
+
+        student = STUDENTS_DATA["students"][found_student_id]
+        ensure_student_fields(student)
+
+        payment_record = {
+            "amount": amount,
+            "subject": subject_text,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "confirmed_by": update.effective_user.id
+        }
+
+        student["paid"] = True
+        student["total_paid"] += amount
+        student["points"] += int(amount)
+        student["payments"].append(payment_record)
+        student["subscriptions"][subject_text] = {
+            "paid": True,
+            "amount": amount,
+            "date": payment_record["date"]
+        }
+
+        save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+        try:
+            await context.bot.send_message(
+                chat_id=int(found_student_id),
+                text=(
+                    "✅ تم تأكيد الدفع بنجاح\n\n"
+                    f"📚 المادة: {subject_text}\n"
+                    f"💰 المبلغ المسجل: {amount} JD\n"
+                    f"⭐ نقاطك الحالية: {student['points']}\n\n"
+                    "شكرًا لك 🌟"
+                )
+            )
+        except Exception as e:
+            print(f"❌ failed to notify student from admin_mode: {e}")
+
+        username_text = f"@{student.get('username', '')}" if student.get("username") else "بدون يوزرنيم"
+
         await update.message.reply_text(
-            build_student_profile_text(student_id)
+            f"✅ تم تأكيد الدفع للطالب:\n"
+            f"👤 الاسم: {student.get('full_name', 'بدون اسم')}\n"
+            f"🔗 اليوزر: {username_text}\n"
+            f"🆔 ID: {found_student_id}\n"
+            f"📚 المادة: {subject_text}\n"
+            f"💰 المبلغ: {amount} JD\n"
+            f"⭐ النقاط الحالية: {student['points']}"
         )
 
         context.user_data.pop("admin_mode", None)
         return
-        
+
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
-
         await update.message.reply_text(
             "رجعناك للقائمة الرئيسية ✅",
             reply_markup=main_keyboard()
@@ -818,7 +1102,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ready_subject_names:
         context.user_data["pending_subject"] = text
-
         await update.message.reply_text(
             f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
             reply_markup=exam_type_keyboard()
@@ -827,7 +1110,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text in ALL_SUBJECTS:
         context.user_data["pending_subject"] = text
-
         await update.message.reply_text(
             f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
             reply_markup=exam_type_keyboard()
@@ -889,22 +1171,23 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
         raw = text[1:].strip()
 
         known_commands = {
-    "start",
-    "myid",
-    "stats",
-    "top",
-    "ready_stats",
-    "students_stats",
-    "subject",
-    "points",
-    "paid",
-    "profits",
-    "studentpay",
-    "student",
-    "myrequests",
-    "leaderboard",
-    "fixpayment"
-}
+            "start",
+            "myid",
+            "stats",
+            "top",
+            "ready_stats",
+            "students_stats",
+            "subject",
+            "points",
+            "paid",
+            "profits",
+            "studentpay",
+            "student",
+            "myrequests",
+            "leaderboard",
+            "dashboard",
+            "admin",
+        }
 
         if raw and " " not in raw and raw.lower() not in known_commands:
             target = f"@{raw}"
@@ -916,290 +1199,6 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text("أمر غير معروف.")
 
 
-# ===================== leaderboard =====================
-async def leaderboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    students = []
-    for student_id, student in STUDENTS_DATA["students"].items():
-        ensure_student_fields(student)
-
-        students.append({
-            "name": student.get("full_name", "بدون اسم"),
-            "username": student.get("username", ""),
-            "points": student.get("points", 0),
-            "paid": student.get("total_paid", 0)
-        })
-
-    students = sorted(students, key=lambda x: x["points"], reverse=True)
-
-    msg = "🏆 أعلى الطلاب بالنقاط\n\n"
-
-    for i, s in enumerate(students[:10], start=1):
-        username = f"@{s['username']}" if s["username"] else ""
-        msg += f"{i}) {s['name']} {username}\n⭐ {s['points']} نقطة | 💰 {s['paid']} JD\n\n"
-
-    await update.message.reply_text(msg)
-
-
-async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "استخدم الأمر هكذا:\n"
-            "/subject لاب مايكرو - ميد"
-        )
-        return
-
-    subject_name = " ".join(context.args).strip()
-
-    request_count = DATA.get("counts", {}).get(subject_name, 0)
-
-    paid_students = []
-    total_revenue = 0
-
-    for student_id, student in STUDENTS_DATA["students"].items():
-
-        ensure_student_fields(student)
-
-        subscriptions = student.get("subscriptions", {})
-
-        if subject_name in subscriptions:
-
-            amount = subscriptions[subject_name].get("amount", 0)
-            total_revenue += amount
-
-            paid_students.append({
-                "name": student.get("full_name", "بدون اسم"),
-                "username": student.get("username", ""),
-                "points": student.get("points", 0),
-                "amount": amount
-            })
-
-    msg = (
-        f"📚 المادة: {subject_name}\n\n"
-        f"📈 عدد الطلبات: {request_count}\n"
-        f"💰 عدد المشتركين: {len(paid_students)}\n"
-        f"💵 مجموع الربح: {total_revenue} JD\n\n"
-    )
-
-    if paid_students:
-
-        msg += "👨‍🎓 الطلاب المشتركين:\n\n"
-
-        for i, s in enumerate(paid_students, start=1):
-
-            username = f"@{s['username']}" if s["username"] else ""
-
-            msg += (
-                f"{i}) {s['name']} {username}\n"
-                f"💰 دفع: {s['amount']} JD\n"
-                f"⭐ نقاطه: {s['points']}\n\n"
-            )
-
-    else:
-        msg += "لا يوجد طلاب دافعين لهذه المادة."
-
-    await update.message.reply_text(msg)
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "استخدم الأمر هكذا:\n"
-            "/subject لاب مايكرو - ميد"
-        )
-        return
-
-    subject_name = " ".join(context.args).strip()
-
-    request_count = DATA.get("counts", {}).get(subject_name, 0)
-
-    paid_count = 0
-    total_revenue = 0
-
-    for student_id, student in STUDENTS_DATA["students"].items():
-
-        subscriptions = student.get("subscriptions", {})
-
-        if subject_name in subscriptions:
-            paid_count += 1
-            amount = subscriptions[subject_name].get("amount", 0)
-            total_revenue += amount
-
-    msg = (
-        f"📚 المادة: {subject_name}\n\n"
-        f"📈 عدد الطلبات: {request_count}\n"
-        f"💰 عدد المشتركين الدافعين: {paid_count}\n"
-        f"💵 مجموع الربح: {total_revenue} JD"
-    )
-
-    await update.message.reply_text(msg)
-    
-    
-async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-
-    if data == "admin_dashboard":
-        await dashboard(update, context)
-
-    elif data == "admin_leaderboard":
-        await leaderboard(update, context)
-
-    elif data == "admin_profits":
-        await profits(update, context)
-
-    elif data == "admin_top":
-        await top(update, context)
-
-    elif data == "admin_students":
-        await students_stats(update, context)
-
-    elif data == "admin_student":
-        await query.message.reply_text(
-            "استخدم الأمر هكذا:\n"
-            "/student @username"
-        )
-
-    elif data == "admin_paid":
-        await query.message.reply_text(
-            "تأكيد الدفع:\n"
-            "/paid @username اسم المادة - نوع الامتحان 7"
-        )
-
-    elif data == "admin_subject":
-        await query.message.reply_text(
-            "إحصائية مادة:\n"
-            "/subject لاب مايكرو - ميد"
-        )
-    
-    
-async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    students_count = len(STUDENTS_DATA["students"])
-
-    total_revenue = 0
-    total_points = 0
-    subject_revenue = {}
-
-    for student in STUDENTS_DATA["students"].values():
-        ensure_student_fields(student)
-
-        total_revenue += student.get("total_paid", 0)
-        total_points += student.get("points", 0)
-
-        for payment in student.get("payments", []):
-            subject = payment.get("subject", "بدون مادة")
-            amount = payment.get("amount", 0)
-
-            subject_revenue[subject] = subject_revenue.get(subject, 0) + amount
-
-    msg = (
-        "📊 لوحة تحكم البروفيسور\n\n"
-        f"👨‍🎓 عدد الطلاب: {students_count}\n"
-        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
-        f"⭐ مجموع النقاط: {total_points}\n"
-    )
-
-    await update.message.reply_text(msg)
-
-
-async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    uid = update.effective_user.id
-
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
-    buttons = [
-        [InlineKeyboardButton("📊 Dashboard", callback_data="admin_dashboard")],
-        [InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")],
-        [InlineKeyboardButton("💰 الأرباح", callback_data="admin_profits")],
-        [InlineKeyboardButton("📚 أكثر المواد طلبًا", callback_data="admin_top")],
-        [InlineKeyboardButton("👨‍🎓 عدد الطلاب", callback_data="admin_students")],
-        [InlineKeyboardButton("👤 ملف طالب", callback_data="admin_student")],
-        [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
-        [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")]
-    ]
-
-    await update.message.reply_text(
-        "⚙️ لوحة تحكم البروفيسور",
-        reply_markup=InlineKeyboardMarkup(buttons)
-    )
-    
-    
-async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data
-
-    if data == "admin_dashboard":
-        await dashboard(update, context)
-
-    elif data == "admin_leaderboard":
-        await leaderboard(update, context)
-
-    elif data == "admin_profits":
-        await profits(update, context)
-
-    elif data == "admin_top":
-        await top(update, context)
-
-    elif data == "admin_students":
-        await students_stats(update, context)
-
-    elif data == "admin_student":
-        context.user_data["admin_mode"] = "student_lookup"
-
-        await query.message.reply_text(
-            "👤 أرسل الآن:\n\n"
-            "@username\n"
-            "أو\n"
-            "ID الطالب"
-        )
-
-    elif data == "admin_paid":
-        context.user_data["admin_mode"] = "confirm_payment"
-
-        await query.message.reply_text(
-            "💳 أرسل معلومات الدفع:\n\n"
-            "@username\n"
-            "المادة - الامتحان\n"
-            "المبلغ"
-        )
-
-    elif data == "admin_subject":
-        context.user_data["admin_mode"] = "subject_stats"
-
-        await query.message.reply_text(
-            "📊 أرسل اسم المادة:\n\n"
-            "لاب مايكرو - ميد"
-        )
-    
-    
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
@@ -1219,9 +1218,10 @@ def main():
     app.add_handler(CommandHandler("studentpay", student_payment))
     app.add_handler(CommandHandler("student", student_profile))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
-    app.add_handler(CommandHandler("admin", admin_panel))
-    app.add_handler(CallbackQueryHandler(admin_buttons))
     app.add_handler(CommandHandler("dashboard", dashboard))
+    app.add_handler(CommandHandler("admin", admin_panel))
+
+    app.add_handler(CallbackQueryHandler(admin_buttons))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
