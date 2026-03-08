@@ -1356,6 +1356,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_subject", None)
         return
 
+    known_buttons = {
+        "✅ المواد الجاهزة الآن",
+        "📚 المواد الأساسية",
+        "🧪 اللابات",
+        "🎓 مواد دكتور صيدلة",
+        "💳 كيف أشترك؟",
+        "📩 تواصل مع البروفيسور",
+        "👨‍🏫 من هو البروفيسور؟",
+        "⬅️ رجوع للقائمة الرئيسية",
+        "فيرست",
+        "سكند",
+        "فاينال",
+        "ميد",
+    }
+
+    if text not in known_buttons:
+        reply = ask_gpt(text)
+        await update.message.reply_text(reply)
+        return
+
     await update.message.reply_text(
         "اختار من الأزرار الموجودة 👇",
         reply_markup=main_keyboard()
