@@ -976,6 +976,7 @@ def main():
     app.add_handler(CommandHandler("top", top))
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
+    app.add_handler(CommandHandler("subject", subject_stats))
     app.add_handler(CommandHandler("points", my_points))
     app.add_handler(CommandHandler("myrequests", my_requests))
 
