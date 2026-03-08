@@ -1156,58 +1156,46 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = query.data
 
-    # Dashboard
     if data == "admin_dashboard":
-        await dashboard(query, context)
+        await dashboard(update, context)
 
-    # Leaderboard
     elif data == "admin_leaderboard":
-        await leaderboard(query, context)
+        await leaderboard(update, context)
 
-    # الأرباح
     elif data == "admin_profits":
-        await profits(query, context)
+        await profits(update, context)
 
-    # أكثر المواد طلبا
     elif data == "admin_top":
-        await top(query, context)
+        await top(update, context)
 
-    # عدد الطلاب
     elif data == "admin_students":
-        await students_stats(query, context)
+        await students_stats(update, context)
 
-    # ملف طالب
     elif data == "admin_student":
         context.user_data["admin_mode"] = "student_lookup"
 
         await query.message.reply_text(
             "👤 أرسل الآن:\n\n"
-            "username@\n"
+            "@username\n"
             "أو\n"
             "ID الطالب"
         )
 
-    # تأكيد دفع
     elif data == "admin_paid":
         context.user_data["admin_mode"] = "confirm_payment"
 
         await query.message.reply_text(
-            "💳 أرسل معلومات الدفع بهذا الشكل:\n\n"
-            "username@\n"
-            "اسم المادة - الامتحان\n"
-            "المبلغ\n\n"
-            "مثال:\n"
-            "@ahmad\n"
-            "لاب مايكرو - ميد\n"
-            "7"
+            "💳 أرسل معلومات الدفع:\n\n"
+            "@username\n"
+            "المادة - الامتحان\n"
+            "المبلغ"
         )
 
-    # إحصائية مادة
     elif data == "admin_subject":
         context.user_data["admin_mode"] = "subject_stats"
 
         await query.message.reply_text(
-            "📊 أرسل اسم المادة بهذا الشكل:\n\n"
+            "📊 أرسل اسم المادة:\n\n"
             "لاب مايكرو - ميد"
         )
     
