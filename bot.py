@@ -9,20 +9,20 @@ from zoneinfo import ZoneInfo
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
 from telegram.ext import CallbackQueryHandler
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 
 # ===== OpenAI Setup =====
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+client = AsyncOpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # ===== GPT Function =====
-def ask_gpt(user_text: str) -> str:
+async def ask_gpt(user_text: str) -> str:
     if not client:
         return "❌ مفتاح OpenAI غير موجود في متغيرات Railway."
 
     try:
-        response = client.responses.create(
+        response = await client.responses.create(
             model="gpt-5",
             input=[
                 {
@@ -59,6 +59,8 @@ def ask_gpt(user_text: str) -> str:
                         "7) لا تطل إذا كانت الرسالة قصيرة وبسيطة. "
                         "8) لا تضف أي شيء غير مطلوب من نفسك. "
                         "9) إذا السؤال طبي/دوائي حساس، كن accurate جدًا. "
+                        "10) إذا الشرح كان علمي، خليه بنفس vibe شرح البروفيسور: "
+                        "structured, engaging, exam-oriented, mix عربي + English."
 
                         "أمثلة سلوكية فقط: "
                         "إذا المستخدم قال: مرحبا → رد قصير مثل: هلا والله 👑 "
@@ -69,12 +71,14 @@ def ask_gpt(user_text: str) -> str:
                     "role": "user",
                     "content": user_text
                 }
-            ]
+            ],
+            max_output_tokens=500
         )
 
         return response.output_text.strip()
 
     except Exception as e:
+        print(f"❌ GPT error: {e}")
         return f"❌ صار خطأ أثناء الاتصال بـ GPT:\n{e}"
 
 logging.basicConfig(level=logging.INFO)
@@ -1386,7 +1390,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("pending_subject", None)
         return
 
-    known_buttons = {
+            known_buttons = {
         "✅ المواد الجاهزة الآن",
         "📚 المواد الأساسية",
         "🧪 اللابات",
@@ -1401,8 +1405,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ميد",
     }
 
+    greetings = {
+        "مرحبا", "هلا", "السلام عليكم", "اهلا", "أهلا", "hi", "hello"
+    }
+
+    if text.strip().lower() in {g.lower() for g in greetings}:
+        await update.message.reply_text("هلا والله 👑")
+        return
+
     if text not in known_buttons:
-        reply = ask_gpt(text)
+        await context.bot.send_chat_action(
+            chat_id=update.effective_chat.id,
+            action="typing"
+        )
+        reply = await ask_gpt(text)
         await update.message.reply_text(reply)
         return
 
@@ -1770,10 +1786,9 @@ async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     question = " ".join(context.args)
 
-    answer = ask_gpt(question)
+    answer = await ask_gpt(question)
 
     await update.message.reply_text(answer)
-
 # ===================== تشغيل البوت =====================
 def main():
     app = ApplicationBuilder().token(TOKEN).build()
