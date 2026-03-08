@@ -1120,6 +1120,7 @@ def main():
     app.add_handler(CommandHandler("studentpay", student_payment))
     app.add_handler(CommandHandler("student", student_profile))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
+    app.add_handler(CommandHandler("dashboard", dashboard))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
