@@ -24,6 +24,7 @@ ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
 ADMIN_URL = "https://t.me/theproff991"
+MAIN_CHANNEL_ID = "@TheProfessoR199"
 
 # ===================== التخزين الدائم =====================
 DATA_DIR = "/data"
@@ -1338,6 +1339,23 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
                 return
 
     await update.message.reply_text("أمر غير معروف.")
+    
+    
+async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=MAIN_CHANNEL_ID,
+            text="✅ تم ربط البوت بالقناة الرئيسية بنجاح"
+        )
+        await update.message.reply_text("✅ تم إرسال رسالة تجريبية للقناة.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ فشل الإرسال للقناة:\n{e}")
 
 
 # ===================== تشغيل البوت =====================
@@ -1361,6 +1379,7 @@ def main():
     app.add_handler(CommandHandler("leaderboard", leaderboard))
     app.add_handler(CommandHandler("dashboard", dashboard))
     app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("testchannel", test_channel))
 
     app.add_handler(CallbackQueryHandler(admin_buttons))
 
