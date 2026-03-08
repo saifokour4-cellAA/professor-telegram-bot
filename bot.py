@@ -6,6 +6,7 @@ from datetime import datetime
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import CallbackQueryHandler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1028,6 +1029,47 @@ async def subject_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg)
     
     
+async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data
+
+    if data == "admin_dashboard":
+        await dashboard(update, context)
+
+    elif data == "admin_leaderboard":
+        await leaderboard(update, context)
+
+    elif data == "admin_profits":
+        await profits(update, context)
+
+    elif data == "admin_top":
+        await top(update, context)
+
+    elif data == "admin_students":
+        await students_stats(update, context)
+
+    elif data == "admin_student":
+        await query.message.reply_text(
+            "استخدم الأمر هكذا:\n"
+            "/student @username"
+        )
+
+    elif data == "admin_paid":
+        await query.message.reply_text(
+            "تأكيد الدفع:\n"
+            "/paid @username اسم المادة - نوع الامتحان 7"
+        )
+
+    elif data == "admin_subject":
+        await query.message.reply_text(
+            "إحصائية مادة:\n"
+            "/subject لاب مايكرو - ميد"
+        )
+    
+    
 async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -1061,6 +1103,31 @@ async def dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     await update.message.reply_text(msg)
+
+
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    buttons = [
+        [InlineKeyboardButton("📊 Dashboard", callback_data="admin_dashboard")],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data="admin_leaderboard")],
+        [InlineKeyboardButton("💰 الأرباح", callback_data="admin_profits")],
+        [InlineKeyboardButton("📚 أكثر المواد طلبًا", callback_data="admin_top")],
+        [InlineKeyboardButton("👨‍🎓 عدد الطلاب", callback_data="admin_students")],
+        [InlineKeyboardButton("👤 ملف طالب", callback_data="admin_student")],
+        [InlineKeyboardButton("💳 تأكيد دفع", callback_data="admin_paid")],
+        [InlineKeyboardButton("📊 إحصائية مادة", callback_data="admin_subject")]
+    ]
+
+    await update.message.reply_text(
+        "⚙️ لوحة تحكم البروفيسور",
+        reply_markup=InlineKeyboardMarkup(buttons)
+    )
     
     
 # ===================== تشغيل البوت =====================
@@ -1082,6 +1149,7 @@ def main():
     app.add_handler(CommandHandler("studentpay", student_payment))
     app.add_handler(CommandHandler("student", student_profile))
     app.add_handler(CommandHandler("leaderboard", leaderboard))
+    app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("dashboard", dashboard))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
