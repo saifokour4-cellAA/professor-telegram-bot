@@ -2,7 +2,8 @@ import logging
 import json
 import os
 import tempfile
-from datetime import datetime, date, time
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -78,9 +79,13 @@ POSTED_RAMADAN_DATA = load_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
 
 DATA = REQUESTS_DATA
 
-# ===================== أدوات مساعدة =====================
+# ===================== أدوات مساعدة =====================# ===================== أدوات مساعدة =====================
 def normalize_text(text: str) -> str:
     return " ".join((text or "").strip().lower().split())
+
+
+def amman_now():
+    return datetime.now(ZoneInfo("Asia/Amman"))
 
 
 def ensure_student_fields(student: dict):
@@ -104,7 +109,6 @@ def ensure_student_fields(student: dict):
         student["first_name"] = ""
     if "last_seen" not in student:
         student["last_seen"] = "active"
-
 
 def save_student(user):
     user_id = str(user.id)
@@ -1607,7 +1611,7 @@ RAMADAN_POSTS_BY_DATE = {
 
 
 async def scheduled_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = amman_now().strftime("%Y-%m-%d")
 
     if today_str not in RAMADAN_POSTS_BY_DATE:
         return
@@ -1633,7 +1637,6 @@ async def scheduled_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"❌ scheduled_ramadan_post failed: {e}")
 
-
 async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -1641,7 +1644,7 @@ async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    today_str = datetime.now().strftime("%Y-%m-%d")
+    today_str = amman_now().strftime("%Y-%m-%d")
     posted_dates = POSTED_RAMADAN_DATA.get("posted_dates", [])
 
     if today_str not in RAMADAN_POSTS_BY_DATE:
@@ -1706,9 +1709,9 @@ def main():
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
 
     app.job_queue.run_daily(
-        scheduled_ramadan_post,
-        time=time(hour=20, minute=0, second=0)
-    )
+    scheduled_ramadan_post,
+    time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+)
 
     print("Bot is running...")
     app.run_polling()
