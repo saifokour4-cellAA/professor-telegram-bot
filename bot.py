@@ -10,7 +10,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # ===================== إعدادات =====================
-TOKEN = "8654189257:AAFET6wtMjvjrPsBeRH-ueLIRAXhptMospc"
+TOKEN = "8654189257:AAHbQPym3Sbn1VrrW3A1HfikrWzyRUr968Q"
+
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
 ADMIN_USERNAME = "@theproff991"
@@ -63,7 +64,6 @@ STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 
 DATA = REQUESTS_DATA
 
-
 # ===================== حفظ الطالب =====================
 def save_student(user):
     user_id = str(user.id)
@@ -75,15 +75,23 @@ def save_student(user):
             "username": user.username if user.username else "",
             "first_name": user.first_name if user.first_name else "",
             "points": 0,
-            "last_seen": "active"
+            "last_seen": "active",
+            "paid": False,
+            "total_paid": 0
         }
     else:
-        STUDENTS_DATA["students"][user_id]["full_name"] = user.full_name
-        STUDENTS_DATA["students"][user_id]["username"] = user.username if user.username else ""
-        STUDENTS_DATA["students"][user_id]["first_name"] = user.first_name if user.first_name else ""
-        if "points" not in STUDENTS_DATA["students"][user_id]:
-            STUDENTS_DATA["students"][user_id]["points"] = 0
-        STUDENTS_DATA["students"][user_id]["last_seen"] = "active"
+        student = STUDENTS_DATA["students"][user_id]
+        student["full_name"] = user.full_name
+        student["username"] = user.username if user.username else ""
+        student["first_name"] = user.first_name if user.first_name else ""
+        student["last_seen"] = "active"
+
+        if "points" not in student:
+            student["points"] = 0
+        if "paid" not in student:
+            student["paid"] = False
+        if "total_paid" not in student:
+            student["total_paid"] = 0
 
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
 
@@ -99,7 +107,6 @@ def add_points(user_id, points):
 
     STUDENTS_DATA["students"][user_id]["points"] += points
     save_json_file(STUDENTS_FILE, STUDENTS_DATA)
-
 
 # ===================== تسجيل طلب مادة =====================
 async def notify_admin_new_interest(subject: str, user, count: int, context: ContextTypes.DEFAULT_TYPE):
@@ -134,7 +141,6 @@ async def register_request(subject: str, user, context: ContextTypes.DEFAULT_TYP
         save_json_file(REQUESTS_FILE, DATA)
 
         await notify_admin_new_interest(subject, user, DATA["counts"][subject], context)
-
 
 # ===================== المواد الجاهزة حسب المادة + نوع الامتحان =====================
 READY_SUBJECTS = {
@@ -259,7 +265,6 @@ EXAM_TYPE_MENU = [
     ["⬅️ رجوع للقائمة الرئيسية"],
 ]
 
-
 # ===================== أدوات مساعدة =====================
 def chunk_buttons(items, per_row=2):
     rows = []
@@ -280,7 +285,6 @@ def section_keyboard(items):
 
 def exam_type_keyboard():
     return ReplyKeyboardMarkup(EXAM_TYPE_MENU, resize_keyboard=True)
-
 
 # ===================== أوامر =====================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -391,6 +395,115 @@ async def my_points(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def paid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if len(context.args) < 2:
+        await update.message.reply_text("استخدم الأمر هكذا:\n/paid 123456789 7")
+        return
+
+    student_id = context.args[0].strip()
+    amount_text = context.args[1].strip()
+
+    if not student_id.isdigit():
+        await update.message.reply_text("الـ ID غير صحيح.")
+        return
+
+    try:
+        amount = float(amount_text)
+    except Exception:
+        await update.message.reply_text("المبلغ غير صحيح.")
+        return
+
+    if student_id not in STUDENTS_DATA["students"]:
+        await update.message.reply_text("هذا الطالب غير موجود في البيانات.")
+        return
+
+    student = STUDENTS_DATA["students"][student_id]
+
+    student["paid"] = True
+    student["total_paid"] += amount
+    student["points"] += int(amount)
+
+    save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+    try:
+        await context.bot.send_message(
+            chat_id=int(student_id),
+            text=(
+                "✅ تم تأكيد الدفع بنجاح\n\n"
+                f"💰 المبلغ المسجل: {amount} JD\n"
+                f"⭐ نقاطك الحالية: {student['points']}\n\n"
+                "شكرًا لك 🌟"
+            )
+        )
+    except Exception as e:
+        print(f"❌ failed to notify student: {e}")
+
+    await update.message.reply_text(
+        f"✅ تم تأكيد الدفع للطالب:\n"
+        f"{student['full_name']}\n"
+        f"💰 المبلغ: {amount} JD\n"
+        f"⭐ النقاط الحالية: {student['points']}"
+    )
+
+
+async def profits(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    total_revenue = 0
+    paid_students = 0
+
+    for student in STUDENTS_DATA["students"].values():
+        amount = student.get("total_paid", 0)
+        if amount > 0:
+            paid_students += 1
+            total_revenue += amount
+
+    await update.message.reply_text(
+        f"💰 إجمالي الأرباح: {total_revenue} JD\n"
+        f"👨‍🎓 عدد الطلاب الدافعين: {paid_students}"
+    )
+
+
+async def student_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not context.args:
+        await update.message.reply_text("استخدم الأمر هكذا:\n/studentpay 123456789")
+        return
+
+    student_id = context.args[0].strip()
+
+    if student_id not in STUDENTS_DATA["students"]:
+        await update.message.reply_text("هذا الطالب غير موجود.")
+        return
+
+    student = STUDENTS_DATA["students"][student_id]
+
+    username = student.get("username", "")
+    username_text = f"@{username}" if username else "بدون يوزرنيم"
+
+    await update.message.reply_text(
+        f"👤 الاسم: {student.get('full_name', 'بدون اسم')}\n"
+        f"🔗 اليوزر: {username_text}\n"
+        f"✅ حالة الدفع: {'دافع' if student.get('paid', False) else 'غير دافع'}\n"
+        f"💰 مجموع المدفوع: {student.get('total_paid', 0)} JD\n"
+        f"⭐ النقاط: {student.get('points', 0)}"
+    )
+
 # ===================== الرسائل العامة =====================
 async def send_subscription_guide(update: Update):
     btns = [[InlineKeyboardButton("📩 تواصل مع البروفيسور", url=ADMIN_URL)]]
@@ -434,7 +547,6 @@ async def send_about_professor(update: Update):
         "اسألوا زملاءكم اللي درسوا معه…\n"
         "الفيدباك منهم يحكي القصة كلها ✨"
     )
-
 
 # ===================== التعامل مع الرسائل =====================
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -563,6 +675,10 @@ def main():
     app.add_handler(CommandHandler("ready_stats", ready_stats))
     app.add_handler(CommandHandler("students_stats", students_stats))
     app.add_handler(CommandHandler("points", my_points))
+
+    app.add_handler(CommandHandler("paid", paid))
+    app.add_handler(CommandHandler("profits", profits))
+    app.add_handler(CommandHandler("studentpay", student_payment))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
