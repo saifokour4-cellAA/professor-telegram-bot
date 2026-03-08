@@ -1709,20 +1709,18 @@ async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"❌ فشل النشر:\n{e}")
         
-        async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
     if not context.args:
-        await update.message.reply_text("استخدم الأمر هكذا:\n/gpttest اشرحلي هبوط السكر")
+        await update.message.reply_text("اكتب السؤال بعد الأمر.")
         return
 
-    user_text = " ".join(context.args).strip()
-    reply = ask_gpt(user_text)
-    await update.message.reply_text(reply)
+    question = " ".join(context.args)
+
+    answer = ask_gpt(question)
+
+    await update.message.reply_text(answer)
 
 # ===================== تشغيل البوت =====================
 def main():
