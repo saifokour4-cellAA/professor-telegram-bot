@@ -1295,6 +1295,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data.pop("admin_mode", None)
         return
+        
+    # ===== ADMIN MODE : CREATE RAMADAN QUIZ =====
+    if mode == "create_ramadan_quiz":
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+        if len(lines) != 6:
+            await update.message.reply_text(
+                "❌ الصيغة غير صحيحة.\n\n"
+                "أرسلها هكذا:\n"
+                "السؤال\n"
+                "الخيار 1\n"
+                "الخيار 2\n"
+                "الخيار 3\n"
+                "الخيار 4\n"
+                "رقم الجواب الصحيح"
+            )
+            return
+
+        question = lines[0]
+        options = lines[1:5]
+        correct_text = lines[5]
+
+        try:
+            correct_option = int(correct_text) - 1
+        except Exception:
+            await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون رقم من 1 إلى 4.")
+            return
+
+        if correct_option < 0 or correct_option > 3:
+            await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
+            return
+
+        context.user_data["quiz_question"] = question
+        context.user_data["quiz_options"] = options
+        context.user_data["quiz_correct_option"] = correct_option
+
+        await update.message.reply_text(
+            "✅ تم حفظ السؤال مؤقتًا.\n"
+            "الخطوة القادمة: نشره كـ Quiz Poll على القناة."
+        )
+
+        context.user_data.pop("admin_mode", None)
+        return
 
     # ===== الوضع العادي =====
     if text == "⬅️ رجوع للقائمة الرئيسية":
@@ -1804,6 +1847,33 @@ async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     print("❌ Update caused error:", context.error)
     
+    
+async def quiz_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    context.user_data["admin_mode"] = "create_ramadan_quiz"
+
+    await update.message.reply_text(
+        "🕌 أرسل سؤال رمضان بهذا الشكل:\n\n"
+        "السؤال\n"
+        "الخيار 1\n"
+        "الخيار 2\n"
+        "الخيار 3\n"
+        "الخيار 4\n"
+        "رقم الجواب الصحيح\n\n"
+        "مثال:\n"
+        "What is first-line treatment for dysmenorrhoea?\n"
+        "Paracetamol\n"
+        "NSAIDs\n"
+        "Insulin\n"
+        "Antibiotics\n"
+        "2"
+    )
+    
 
 # ===================== تشغيل البوت =====================
 def main():
@@ -1828,6 +1898,7 @@ def main():
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("testchannel", test_channel))
     app.add_handler(CommandHandler("postramadannow", post_ramadan_now))
+    app.add_handler(CommandHandler("quizday", quiz_day))
 
     app.add_handler(CommandHandler("gpttest", gpt_test))
 
@@ -1835,7 +1906,7 @@ def main():
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
-    
+
     app.add_error_handler(error_handler)
 
     app.job_queue.run_daily(
