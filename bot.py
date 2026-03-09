@@ -1085,38 +1085,40 @@ async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
     participants = QUIZ_DATA.get("participants", {})
+
     if not participants:
         await update.message.reply_text("لا يوجد مشاركون في مسابقة رمضان بعد.")
         return
 
-    sorted_participants = get_quiz_ranking()
-
-    msg = "🕌 تقرير مسابقة رمضان\n\n"
-    for i, p in enumerate(sorted_participants, start=1):
-        username = f"@{p.get('username')}" if p.get("username") else "بدون يوزرنيم"
-        msg += (
-            f"{i}) {p.get('full_name', 'بدون اسم')}\n"
-            f"🔗 اليوزر: {username}\n"
-            f"🆔 ID: {p.get('id')}\n"
-            f"🗳️ عدد الإجابات: {p.get('votes_count', 0)}\n"
-            f"✅ الصحيحة: {p.get('correct_count', 0)}\n"
-            f"⭐ النقاط: {p.get('points', 0)}\n\n"
-        )
-
-    msg += (
-        "🎁 الجوائز:\n"
-        "الأول: 3 مواد مجانًا\n"
-        "الثاني: مادتين مجانًا\n"
-        "الثالث: مادة واحدة مجانًا"
+    sorted_participants = sorted(
+        participants.values(),
+        key=lambda x: (x.get("points", 0), x.get("correct_count", 0), -x.get("votes_count", 0)),
+        reverse=True
     )
 
-    await update.message.reply_text(msg)
+    msg = "🏆 الترتيب الكامل لمسابقة رمضان\n\n"
 
+    for i, p in enumerate(sorted_participants, start=1):
+        username = f"@{p.get('username')}" if p.get("username") else "بدون يوزرنيم"
+        points = p.get("points", 0)
+
+        msg += (
+            f"{i}) {p.get('full_name', 'بدون اسم')}\n"
+            f"🔗 {username}\n"
+            f"🆔 {p.get('id')}\n"
+            f"⭐ {points} نقطة\n\n"
+        )
+
+    max_len = 3500
+    for i in range(0, len(msg), max_len):
+        await update.message.reply_text(msg[i:i + max_len])
 
 async def send_current_quiz_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
