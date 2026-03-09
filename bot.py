@@ -1243,7 +1243,6 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         save_json_file(QUIZ_FILE, QUIZ_DATA)
 
         rank = get_user_rank(user_id)
-        username_text = f"@{participants[user_id]['username']}" if participants[user_id]["username"] else "بدون يوزرنيم"
 
         await query.message.reply_text(
             "✅ إجابة صحيحة يا بطل!\n\n"
@@ -1251,21 +1250,6 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🏆 مجموعك الكلي: {participants[user_id]['points']}\n"
             f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
         )
-
-        try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=(
-                    "✅ طالب جاوب صح في سؤال رمضان\n\n"
-                    f"👤 الاسم: {participants[user_id]['full_name']}\n"
-                    f"🔗 اليوزر: {username_text}\n"
-                    f"🆔 ID: {user_id}\n"
-                    f"⭐ مجموع نقاطه: {participants[user_id]['points']}\n"
-                    f"🏆 ترتيبه الحالي: {rank if rank else 'غير محدد'}"
-                )
-            )
-        except Exception as e:
-            print(f"❌ failed to notify admin: {e}")
 
     else:
         save_json_file(QUIZ_FILE, QUIZ_DATA)
