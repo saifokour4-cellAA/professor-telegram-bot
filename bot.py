@@ -7,8 +7,15 @@ from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
-from telegram.ext import CallbackQueryHandler
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    CallbackQueryHandler,
+    PollAnswerHandler,
+    filters,
+)
 from openai import AsyncOpenAI
 
 
@@ -142,7 +149,8 @@ if not os.path.exists(POSTED_RAMADAN_FILE):
 if not os.path.exists(QUIZ_FILE):
     save_json_file(QUIZ_FILE, {
         "quizzes": {},
-        "poll_map": {}
+        "poll_map": {},
+        "participants": {}
     })
     
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
@@ -150,7 +158,8 @@ STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 POSTED_RAMADAN_DATA = load_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
 QUIZ_DATA = load_json_file(QUIZ_FILE, {
     "quizzes": {},
-    "poll_map": {}
+    "poll_map": {},
+    "participants": {}
 })
 
 DATA = REQUESTS_DATA
@@ -1296,7 +1305,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         return
         
-    # ===== ADMIN MODE : CREATE RAMADAN QUIZ =====
+        # ===== ADMIN MODE : CREATE RAMADAN QUIZ =====
     if mode == "create_ramadan_quiz":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
@@ -1327,14 +1336,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
             return
 
-        context.user_data["quiz_question"] = question
-        context.user_data["quiz_options"] = options
-        context.user_data["quiz_correct_option"] = correct_option
+        quiz_date = amman_now().strftime("%Y-%m-%d")
 
-        await update.message.reply_text(
-            "✅ تم حفظ السؤال مؤقتًا.\n"
-            "الخطوة القادمة: نشره كـ Quiz Poll على القناة."
-        )
+        try:
+            poll_message = await context.bot.send_poll(
+                chat_id=MAIN_CHANNEL_ID,
+                question=question,
+                options=options,
+                type="quiz",
+                correct_option_id=correct_option,
+                is_anonymous=False
+            )
+
+            poll_id = poll_message.poll.id
+
+            QUIZ_DATA["quizzes"][quiz_date] = {
+                "question": question,
+                "options": options,
+                "correct_option": correct_option,
+                "poll_id": poll_id,
+                "votes": {},
+                "points_awarded": {}
+            }
+
+            QUIZ_DATA["poll_map"][poll_id] = quiz_date
+            save_json_file(QUIZ_FILE, QUIZ_DATA)
+
+            await update.message.reply_text(
+                f"✅ تم نشر سؤال رمضان بنجاح على القناة.\n"
+                f"📅 التاريخ: {quiz_date}"
+            )
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ فشل نشر الـ Quiz Poll:\n{e}")
 
         context.user_data.pop("admin_mode", None)
         return
@@ -1874,6 +1908,130 @@ async def quiz_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "2"
     )
     
+    
+async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    participants = QUIZ_DATA.get("participants", {})
+
+    if not participants:
+        await update.message.reply_text("لا يوجد مشاركون في مسابقة رمضان بعد.")
+        return
+
+    sorted_participants = sorted(
+        participants.values(),
+        key=lambda x: x.get("points", 0),
+        reverse=True
+    )
+
+    msg = "🕌 تقرير مسابقة رمضان\n\n"
+
+    for i, p in enumerate(sorted_participants, start=1):
+        username = f"@{p.get('username')}" if p.get("username") else "بدون يوزرنيم"
+        msg += (
+            f"{i}) {p.get('full_name', 'بدون اسم')}\n"
+            f"🔗 اليوزر: {username}\n"
+            f"🆔 ID: {p.get('id')}\n"
+            f"🗳️ عدد التصويتات: {p.get('votes_count', 0)}\n"
+            f"✅ الإجابات الصحيحة: {p.get('correct_count', 0)}\n"
+            f"⭐ النقاط: {p.get('points', 0)}\n\n"
+        )
+
+    await update.message.reply_text(msg)
+    
+    
+async def handle_poll_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    poll_answer = update.poll_answer
+
+    if not poll_answer:
+        return
+
+    poll_id = poll_answer.poll_id
+    user = poll_answer.user
+    user_id = str(user.id)
+    selected_options = poll_answer.option_ids
+
+    if poll_id not in QUIZ_DATA.get("poll_map", {}):
+        return
+
+    quiz_date = QUIZ_DATA["poll_map"][poll_id]
+    quiz_info = QUIZ_DATA["quizzes"].get(quiz_date)
+
+    if not quiz_info:
+        return
+
+    correct_option = quiz_info.get("correct_option")
+    participants = QUIZ_DATA.setdefault("participants", {})
+    votes = quiz_info.setdefault("votes", {})
+    points_awarded = quiz_info.setdefault("points_awarded", {})
+
+    save_student(user)
+
+    if user_id not in participants:
+        participants[user_id] = {
+            "id": user.id,
+            "full_name": user.full_name,
+            "username": user.username if user.username else "",
+            "points": 0,
+            "votes_count": 0,
+            "correct_count": 0,
+            "answers": {}
+        }
+    else:
+        participants[user_id]["full_name"] = user.full_name
+        participants[user_id]["username"] = user.username if user.username else ""
+
+    if not selected_options:
+        save_json_file(QUIZ_FILE, QUIZ_DATA)
+        return
+
+    chosen_option = selected_options[0]
+    first_time_vote = user_id not in votes
+
+    votes[user_id] = {
+        "chosen_option": chosen_option,
+        "is_correct": chosen_option == correct_option
+    }
+
+    participants[user_id]["answers"][quiz_date] = {
+        "chosen_option": chosen_option,
+        "is_correct": chosen_option == correct_option
+    }
+
+    if first_time_vote:
+        participants[user_id]["votes_count"] += 1
+
+    if chosen_option == correct_option and user_id not in points_awarded:
+        participants[user_id]["points"] += 3
+        participants[user_id]["correct_count"] += 1
+        points_awarded[user_id] = 3
+
+        student = STUDENTS_DATA["students"].get(user_id)
+        if student:
+            ensure_student_fields(student)
+            student["points"] += 3
+            save_json_file(STUDENTS_FILE, STUDENTS_DATA)
+
+        try:
+            await context.bot.send_message(
+                chat_id=int(user_id),
+                text=(
+                    "✅ إجابة صحيحة يا بطل!\n\n"
+                    f"🕌 سؤال رمضان: {quiz_date}\n"
+                    "⭐ أخذت 3 نقاط\n"
+                    f"🏆 مجموع نقاطك الحالي: {participants[user_id]['points']}"
+                )
+            )
+        except Exception as e:
+            print(f"❌ failed to notify quiz participant {user_id}: {e}")
+
+    QUIZ_DATA["quizzes"][quiz_date] = quiz_info
+    save_json_file(QUIZ_FILE, QUIZ_DATA)
+    
 
 # ===================== تشغيل البوت =====================
 def main():
@@ -1899,10 +2057,11 @@ def main():
     app.add_handler(CommandHandler("testchannel", test_channel))
     app.add_handler(CommandHandler("postramadannow", post_ramadan_now))
     app.add_handler(CommandHandler("quizday", quiz_day))
-
+    app.add_handler(CommandHandler("quizramadan", quiz_ramadan))
     app.add_handler(CommandHandler("gpttest", gpt_test))
 
     app.add_handler(CallbackQueryHandler(admin_buttons))
+    app.add_handler(PollAnswerHandler(handle_poll_answer))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
