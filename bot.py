@@ -1683,7 +1683,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         return
 
-        if mode == "create_ramadan_quiz":
+    if mode == "create_ramadan_quiz":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
         if len(lines) != 6:
