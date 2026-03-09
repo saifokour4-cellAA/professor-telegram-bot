@@ -100,7 +100,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
 STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 POSTED_RAMADAN_FILE = os.path.join(DATA_DIR, "posted_ramadan.json")
-
+QUIZ_FILE = os.path.join(DATA_DIR, "ramadan_quiz_data.json")
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
@@ -139,9 +139,19 @@ if not os.path.exists(STUDENTS_FILE):
 if not os.path.exists(POSTED_RAMADAN_FILE):
     save_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
 
+if not os.path.exists(QUIZ_FILE):
+    save_json_file(QUIZ_FILE, {
+        "quizzes": {},
+        "poll_map": {}
+    })
+    
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
 POSTED_RAMADAN_DATA = load_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
+QUIZ_DATA = load_json_file(QUIZ_FILE, {
+    "quizzes": {},
+    "poll_map": {}
+})
 
 DATA = REQUESTS_DATA
 
