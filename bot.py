@@ -121,7 +121,7 @@ REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
 STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 POSTED_RAMADAN_FILE = os.path.join(DATA_DIR, "posted_ramadan.json")
 QUIZ_FILE = os.path.join(DATA_DIR, "ramadan_quiz_data.json")
-
+WELCOME_FILE = os.path.join(DATA_DIR, "welcome_config.json")
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
@@ -166,6 +166,12 @@ if not os.path.exists(QUIZ_FILE):
         "quizzes": {},
         "participants": {}
     })
+    
+if not os.path.exists(WELCOME_FILE):
+    save_json_file(WELCOME_FILE, {
+        "photo_file_id": "",
+        "sent_to_users": []
+    })
 
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
@@ -175,9 +181,12 @@ QUIZ_DATA = load_json_file(QUIZ_FILE, {
     "quizzes": {},
     "participants": {}
 })
+WELCOME_DATA = load_json_file(WELCOME_FILE, {
+    "photo_file_id": "",
+    "sent_to_users": []
+})
 
 DATA = REQUESTS_DATA
-
 
 # =========================================================
 # Helpers
@@ -188,6 +197,34 @@ def normalize_text(text: str) -> str:
 
 def amman_now():
     return datetime.now(ZoneInfo("Asia/Amman"))
+    
+    
+async def send_welcome_photo_once(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    user_id = str(user.id)
+
+    photo_file_id = WELCOME_DATA.get("photo_file_id", "")
+    sent_to_users = WELCOME_DATA.get("sent_to_users", [])
+
+    if not photo_file_id:
+        return
+
+    if user_id in sent_to_users:
+        return
+
+    try:
+        await context.bot.send_photo(
+            chat_id=update.effective_chat.id,
+            photo=photo_file_id,
+            caption="هلا والله 👑"
+        )
+
+        sent_to_users.append(user_id)
+        WELCOME_DATA["sent_to_users"] = sent_to_users
+        save_json_file(WELCOME_FILE, WELCOME_DATA)
+
+    except Exception as e:
+        print(f"❌ failed to send welcome photo: {e}")
 
 
 def ensure_student_fields(student: dict):
@@ -711,6 +748,7 @@ def exam_type_keyboard():
 # =========================================================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_student(update.effective_user)
+    await send_welcome_photo_once(update, context)
 
     if context.args and context.args[0] == "quiztoday":
         await send_current_quiz_to_user(update, context)
@@ -722,6 +760,17 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختر القسم المناسب من القائمة 👇",
         reply_markup=main_keyboard(),
     )
+    
+    
+async def set_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    context.user_data["admin_mode"] = "waiting_welcome_photo"
+    await update.message.reply_text("📸 ابعث الآن صورة الترحيب لحفظها داخل البوت.")
 
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1404,11 +1453,43 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================================================
 # Message Handler
 # =========================================================
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    mode = context.user_data.get("admin_mode")
+    uid = update.effective_user.id
+
+    if mode != "waiting_welcome_photo":
+        return
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    if not update.message or not update.message.photo:
+        await update.message.reply_text("❌ ابعث صورة فقط.")
+        return
+
+    photo = update.message.photo[-1]
+    file_id = photo.file_id
+
+    WELCOME_DATA["photo_file_id"] = file_id
+    save_json_file(WELCOME_FILE, WELCOME_DATA)
+
+    context.user_data.pop("admin_mode", None)
+
+    await update.message.reply_text(
+        "✅ تم حفظ صورة الترحيب بنجاح.\n\n"
+        "من الآن فصاعدًا، أول طالب يبعث للبوت رح توصله هذه الصورة تلقائيًا."
+    )
+
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
     user = update.effective_user
     mode = context.user_data.get("admin_mode")
 
+    if mode is None:
+        await send_welcome_photo_once(update, context)
+        
     if mode == "student_lookup":
         student_id = resolve_student_id(text)
         if not student_id:
@@ -1602,7 +1683,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.pop("admin_mode", None)
         return
 
-    if mode == "create_ramadan_quiz":
+        if mode == "create_ramadan_quiz":
         lines = [line.strip() for line in text.splitlines() if line.strip()]
 
         if len(lines) != 6:
@@ -1649,15 +1730,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_json_file(QUIZ_FILE, QUIZ_DATA)
 
         deep_link = f"https://t.me/{BOT_USERNAME}?start=quiztoday"
-        buttons = [[InlineKeyboardButton("🕌 جاوب سؤال اليوم", url=deep_link)]]
+        buttons = [[InlineKeyboardButton("🕌 جاوب هنا", url=deep_link)]]
+
+        channel_text = (
+            "🕌 المسابقة الرمضانية\n\n"
+            "✨ كل إجابة صحيحة = 3 نقاط ⭐\n"
+            "والمسابقة مستمرة من اليوم لغاية قبل العيد بيوم.\n"
+            "المركز الأول بياخذ 3 مواد مجانية، الثاني مادتين مجانًا، والثالث مادة مجانية 👑\n\n"
+            f"❓ السؤال:\n{question}"
+        )
 
         try:
             await context.bot.send_message(
                 chat_id=MAIN_CHANNEL_ID,
-                text=(
-                    "🕌 سؤال رمضان اليوم جاهز!\n\n"
-                    "اضغط الزر بالأسفل وجاوب داخل البوت 👇"
-                ),
+                text=channel_text,
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
 
@@ -1895,6 +1981,7 @@ def main():
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("setwelcome", set_welcome))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
@@ -1920,6 +2007,7 @@ def main():
     app.add_handler(CallbackQueryHandler(quiz_answer_button, pattern=r"^quizanswer\|"))
     app.add_handler(CallbackQueryHandler(admin_buttons))
 
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_unknown_command))
 
