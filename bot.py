@@ -1603,96 +1603,111 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if mode == "create_ramadan_quiz":
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    if len(lines) != 6:
-        await update.message.reply_text(
-            "❌ الصيغة غير صحيحة.\n\n"
-            "أرسلها هكذا:\n"
-            "السؤال\n"
-            "الخيار 1\n"
-            "الخيار 2\n"
-            "الخيار 3\n"
-            "الخيار 4\n"
-            "رقم الجواب الصحيح"
-        )
+        if len(lines) != 6:
+            await update.message.reply_text(
+                "❌ الصيغة غير صحيحة.\n\n"
+                "أرسلها هكذا:\n"
+                "السؤال\n"
+                "الخيار 1\n"
+                "الخيار 2\n"
+                "الخيار 3\n"
+                "الخيار 4\n"
+                "رقم الجواب الصحيح"
+            )
+            return
+
+        question = lines[0]
+        options = lines[1:5]
+        correct_text = lines[5]
+
+        try:
+            correct_option = int(correct_text) - 1
+        except Exception:
+            await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
+            return
+
+        if correct_option < 0 or correct_option > 3:
+            await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
+            return
+
+        quiz_date = amman_now().strftime("%Y-%m-%d_%H-%M-%S")
+
+        old_quiz_key = QUIZ_DATA.get("current_quiz")
+        if old_quiz_key and old_quiz_key in QUIZ_DATA["quizzes"]:
+            QUIZ_DATA["quizzes"][old_quiz_key]["closed"] = True
+
+        QUIZ_DATA["current_quiz"] = quiz_date
+        QUIZ_DATA["quizzes"][quiz_date] = {
+            "question": question,
+            "options": options,
+            "correct_option": correct_option,
+            "closed": False
+        }
+
+        save_json_file(QUIZ_FILE, QUIZ_DATA)
+
+        deep_link = f"https://t.me/{BOT_USERNAME}?start=quiztoday"
+        buttons = [[InlineKeyboardButton("🕌 جاوب سؤال اليوم", url=deep_link)]]
+
+        try:
+            await context.bot.send_message(
+                chat_id=MAIN_CHANNEL_ID,
+                text=(
+                    "🕌 سؤال رمضان اليوم جاهز!\n\n"
+                    "اضغط الزر بالأسفل وجاوب داخل البوت 👇"
+                ),
+                reply_markup=InlineKeyboardMarkup(buttons)
+            )
+
+            await update.message.reply_text(
+                f"✅ تم نشر سؤال رمضان الجديد بنجاح.\n"
+                f"📅 التاريخ: {quiz_date}\n"
+                "🔒 تم إغلاق السؤال السابق تلقائيًا."
+            )
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ فشل نشر سؤال رمضان:\n{e}")
+
+        context.user_data.pop("admin_mode", None)
         return
-
-    question = lines[0]
-    options = lines[1:5]
-    correct_text = lines[5]
-
-    try:
-        correct_option = int(correct_text) - 1
-    except Exception:
-        await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
-        return
-
-    if correct_option < 0 or correct_option > 3:
-        await update.message.reply_text("❌ رقم الجواب الصحيح لازم يكون بين 1 و 4.")
-        return
-
-    quiz_date = amman_now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    old_quiz_key = QUIZ_DATA.get("current_quiz")
-    if old_quiz_key and old_quiz_key in QUIZ_DATA["quizzes"]:
-        QUIZ_DATA["quizzes"][old_quiz_key]["closed"] = True
-
-    QUIZ_DATA["current_quiz"] = quiz_date
-    QUIZ_DATA["quizzes"][quiz_date] = {
-        "question": question,
-        "options": options,
-        "correct_option": correct_option,
-        "closed": False
-    }
-
-    save_json_file(QUIZ_FILE, QUIZ_DATA)
-
-    deep_link = f"https://t.me/{BOT_USERNAME}?start=quiztoday"
-    buttons = [[InlineKeyboardButton("🕌 جاوب سؤال اليوم", url=deep_link)]]
-
-    try:
-        await context.bot.send_message(
-            chat_id=MAIN_CHANNEL_ID,
-            text=(
-                "🕌 سؤال رمضان اليوم جاهز!\n\n"
-                "اضغط الزر بالأسفل وجاوب داخل البوت 👇"
-            ),
-            reply_markup=InlineKeyboardMarkup(buttons)
-        )
-
-        await update.message.reply_text(
-            f"✅ تم نشر سؤال رمضان الجديد بنجاح.\n"
-            f"📅 التاريخ: {quiz_date}\n"
-            "🔒 تم إغلاق السؤال السابق تلقائيًا."
-        )
-
-    except Exception as e:
-        await update.message.reply_text(f"❌ فشل نشر سؤال رمضان:\n{e}")
-
-    context.user_data.pop("admin_mode", None)
-    return
 
     if text == "⬅️ رجوع للقائمة الرئيسية":
         context.user_data.pop("pending_subject", None)
-        await update.message.reply_text("رجعناك للقائمة الرئيسية ✅", reply_markup=main_keyboard())
+        await update.message.reply_text(
+            "رجعناك للقائمة الرئيسية ✅",
+            reply_markup=main_keyboard()
+        )
         return
 
     if text == "✅ المواد الجاهزة الآن":
         ready_subject_names = sorted(list({subject for subject, exam in READY_SUBJECTS.keys()}))
-        await update.message.reply_text("اختر مادة جاهزة 👇", reply_markup=section_keyboard(ready_subject_names))
+        await update.message.reply_text(
+            "اختر مادة جاهزة 👇",
+            reply_markup=section_keyboard(ready_subject_names)
+        )
         return
 
     if text == "📚 المواد الأساسية":
-        await update.message.reply_text("اختر من المواد الأساسية 👇", reply_markup=section_keyboard(BASIC_SUBJECTS))
+        await update.message.reply_text(
+            "اختر من المواد الأساسية 👇",
+            reply_markup=section_keyboard(BASIC_SUBJECTS)
+        )
         return
 
     if text == "🧪 اللابات":
-        await update.message.reply_text("اختر من اللابات 👇", reply_markup=section_keyboard(LAB_SUBJECTS))
+        await update.message.reply_text(
+            "اختر من اللابات 👇",
+            reply_markup=section_keyboard(LAB_SUBJECTS)
+        )
         return
 
     if text == "🎓 مواد دكتور صيدلة":
-        await update.message.reply_text("اختر من مواد دكتور صيدلة 👇", reply_markup=section_keyboard(PHARMD_SUBJECTS))
+        await update.message.reply_text(
+            "اختر من مواد دكتور صيدلة 👇",
+            reply_markup=section_keyboard(PHARMD_SUBJECTS)
+        )
         return
 
     if text == "💳 كيف أشترك؟":
@@ -1709,7 +1724,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     ready_subject_names = {subject for subject, exam in READY_SUBJECTS.keys()}
 
-    if text in ready_subject_names or text in ALL_SUBJECTS:
+    if text in ready_subject_names:
+        context.user_data["pending_subject"] = text
+        await update.message.reply_text(
+            f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
+            reply_markup=exam_type_keyboard()
+        )
+        return
+
+    if text in ALL_SUBJECTS:
         context.user_data["pending_subject"] = text
         await update.message.reply_text(
             f"📚 المادة: {text}\n\nاختر نوع الامتحان المطلوب 👇",
@@ -1721,7 +1744,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_subject = context.user_data.get("pending_subject")
 
         if not pending_subject:
-            await update.message.reply_text("اختار المادة أولًا 👇", reply_markup=main_keyboard())
+            await update.message.reply_text(
+                "اختار المادة أولًا 👇",
+                reply_markup=main_keyboard()
+            )
             return
 
         full_subject = f"{pending_subject} - {text}"
@@ -1774,14 +1800,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text not in known_buttons:
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id,
-            action=ChatAction.TYPING
+            action="typing"
         )
         reply = await ask_gpt(text)
         await update.message.reply_text(reply)
         return
 
-    await update.message.reply_text("اختار من الأزرار الموجودة 👇", reply_markup=main_keyboard())
-
+    await update.message.reply_text(
+        "اختار من الأزرار الموجودة 👇",
+        reply_markup=main_keyboard()
+    )
 
 # =========================================================
 # Misc Commands
