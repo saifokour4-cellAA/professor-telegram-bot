@@ -101,7 +101,7 @@ logger = logging.getLogger(__name__)
 # =========================================================
 # Settings
 # =========================================================
-TOKEN = "PUT_YOUR_BOT_TOKEN_HERE"
+TOKEN = "8654189257:AAHQ7Jdn5-vmLsD5jP4SC-WwrkyWxJO9Fhc"
 
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
