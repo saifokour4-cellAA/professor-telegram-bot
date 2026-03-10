@@ -122,6 +122,7 @@ STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 POSTED_RAMADAN_FILE = os.path.join(DATA_DIR, "posted_ramadan.json")
 QUIZ_FILE = os.path.join(DATA_DIR, "ramadan_quiz_data.json")
 WELCOME_FILE = os.path.join(DATA_DIR, "welcome_config.json")
+PENDING_RAMADAN_FILE = os.path.join(DATA_DIR, "pending_ramadan_post.json")
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
@@ -172,6 +173,14 @@ if not os.path.exists(WELCOME_FILE):
         "photo_file_id": "",
         "sent_to_users": []
     })
+    
+if not os.path.exists(PENDING_RAMADAN_FILE):
+    save_json_file(PENDING_RAMADAN_FILE, {
+        "date": "",
+        "text": "",
+        "photo_file_id": "",
+        "posted": False
+    })
 
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
@@ -184,6 +193,12 @@ QUIZ_DATA = load_json_file(QUIZ_FILE, {
 WELCOME_DATA = load_json_file(WELCOME_FILE, {
     "photo_file_id": "",
     "sent_to_users": []
+})
+PENDING_RAMADAN_DATA = load_json_file(PENDING_RAMADAN_FILE, {
+    "date": "",
+    "text": "",
+    "photo_file_id": "",
+    "posted": False
 })
 
 DATA = REQUESTS_DATA
@@ -773,9 +788,22 @@ async def set_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("📸 ابعث الآن صورة الترحيب لحفظها داخل البوت.")
 
 
+async def set_ramadan_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+
+    if uid not in ADMIN_IDS:
+        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+        return
+
+    context.user_data["admin_mode"] = "waiting_ramadan_post_text"
+
+    await update.message.reply_text(
+        "📩 ابعث الآن نص منشور رمضان الذي تريد نشره اليوم الساعة 8:00 مساءً."
+    )
+
+
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
-
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -1265,77 +1293,81 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # =========================================================
 # Ramadan Posts
 # =========================================================
-RAMADAN_POSTS_BY_DATE = {
-    "2026-03-09": "🌙 إفطارًا هنيئًا يا أبطال البروفيسور 🤍\nاليوم 18 رمضان\n\nاشربوا المي بين الإفطار والسحور بشكل موزع 💧",
-    "2026-03-10": "🌙 إفطارًا هنيئًا 🤍\nاليوم 19 رمضان\n\nمريض السكري لا يغير الجرعات من نفسه برمضان.",
-    "2026-03-11": "🌙 إفطارًا هنيئًا 🤍\nاليوم 20 رمضان\n\nهبوط السكر قد يسبب رجفة وتعرق ودوخة.",
-    "2026-03-12": "🌙 إفطارًا هنيئًا 🤍\nاليوم 21 رمضان\n\nبعض أدوية الضغط والمدرات تحتاج تنظيم محترم برمضان.",
-    "2026-03-13": "🌙 إفطارًا هنيئًا 🤍\nاليوم 22 رمضان\n\nللبشرة الناشفة: مرطب مباشر بعد الغسل.",
-    "2026-03-14": "🌙 إفطارًا هنيئًا 🤍\nاليوم 23 رمضان\n\nالإفطار الثقيل جدًا مرة وحدة يعمل خمول وحموضة.",
-    "2026-03-15": "🌙 إفطارًا هنيئًا 🤍\nاليوم 24 رمضان\n\nوزع شرب الماء من الإفطار للسحور.",
-    "2026-03-16": "🌙 إفطارًا هنيئًا 🤍\nاليوم 25 رمضان\n\nبعض الأدوية لا تُنقل بين الإفطار والسحور ببساطة.",
-    "2026-03-17": "🌙 إفطارًا هنيئًا 🤍\nاليوم 26 رمضان\n\nالجفاف الشديد والدوخة القوية لازم ينأخذوا بجدية.",
-    "2026-03-18": "🌙 إفطارًا هنيئًا 🤍\nاليوم 27 رمضان\n\nالإفطار الذكي: نشويات + بروتين + خضار + سوائل.",
-    "2026-03-19": "🌙 إفطارًا هنيئًا 🤍\nاليوم 28 رمضان\n\nالعصير حتى لو طبيعي يبقى محمل بالسكر.",
-    "2026-03-20": "🌙 إفطارًا هنيئًا 🤍\nاليوم 29 رمضان\n\nالصداع في رمضان قد يكون من الجفاف أو الكافيين أو قلة النوم.",
-}
-
-
-async def scheduled_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
+async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
 
-    if today_str not in RAMADAN_POSTS_BY_DATE:
+    # إلغاء يوم 2026-03-09
+    if today_str == "2026-03-09":
         return
 
-    posted_dates = POSTED_RAMADAN_DATA.get("posted_dates", [])
-    if today_str in posted_dates:
+    # إذا كان منشور اليوم محفوظًا بالفعل، لا تذكر
+    if PENDING_RAMADAN_DATA.get("date") == today_str and PENDING_RAMADAN_DATA.get("text"):
         return
 
     try:
         await context.bot.send_message(
-            chat_id=MAIN_CHANNEL_ID,
-            text=RAMADAN_POSTS_BY_DATE[today_str]
+            chat_id=ADMIN_ID,
+            text=(
+                "⏰ تذكير رمضان\n\n"
+                "لازم تجهز منشور اليوم.\n"
+                "ابعتلي الأمر:\n"
+                "/setramadanpost\n\n"
+                "ثم ابعث النص وبعده الصورة."
+            )
         )
-
-        posted_dates.append(today_str)
-        POSTED_RAMADAN_DATA["posted_dates"] = posted_dates
-        save_json_file(POSTED_RAMADAN_FILE, POSTED_RAMADAN_DATA)
-
     except Exception as e:
-        print(f"❌ scheduled_ramadan_post failed: {e}")
+        print(f"❌ remind_ramadan_post failed: {e}")
 
 
-async def post_ramadan_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
-        return
-
+async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
-    posted_dates = POSTED_RAMADAN_DATA.get("posted_dates", [])
 
-    if today_str not in RAMADAN_POSTS_BY_DATE:
-        await update.message.reply_text(f"❌ لا يوجد منشور مربوط بتاريخ اليوم.\n📅 التاريخ: {today_str}")
+    # إلغاء يوم 2026-03-09
+    if today_str == "2026-03-09":
         return
 
-    if today_str in posted_dates:
-        await update.message.reply_text(f"⚠️ منشور اليوم منشور سابقًا.\n📅 التاريخ: {today_str}")
+    if PENDING_RAMADAN_DATA.get("date") != today_str:
+        return
+
+    if PENDING_RAMADAN_DATA.get("posted", False):
+        return
+
+    post_text = PENDING_RAMADAN_DATA.get("text", "").strip()
+    photo_file_id = PENDING_RAMADAN_DATA.get("photo_file_id", "").strip()
+
+    if not post_text:
         return
 
     try:
+        if photo_file_id:
+            await context.bot.send_photo(
+                chat_id=MAIN_CHANNEL_ID,
+                photo=photo_file_id,
+                caption=post_text
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=MAIN_CHANNEL_ID,
+                text=post_text
+            )
+
+        PENDING_RAMADAN_DATA["posted"] = True
+        save_json_file(PENDING_RAMADAN_FILE, PENDING_RAMADAN_DATA)
+
         await context.bot.send_message(
-            chat_id=MAIN_CHANNEL_ID,
-            text=RAMADAN_POSTS_BY_DATE[today_str]
+            chat_id=ADMIN_ID,
+            text="✅ تم نشر منشور رمضان المجدول بنجاح."
         )
 
-        posted_dates.append(today_str)
-        POSTED_RAMADAN_DATA["posted_dates"] = posted_dates
-        save_json_file(POSTED_RAMADAN_FILE, POSTED_RAMADAN_DATA)
-
-        await update.message.reply_text(f"✅ تم نشر منشور رمضان بنجاح.\n📅 التاريخ: {today_str}")
-
     except Exception as e:
-        await update.message.reply_text(f"❌ فشل النشر:\n{e}")
-
+        print(f"❌ publish_pending_ramadan_post failed: {e}")
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"❌ فشل نشر منشور رمضان:\n{e}"
+            )
+        except Exception:
+            pass
 
 # =========================================================
 # Admin Panel
@@ -1443,29 +1475,62 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     mode = context.user_data.get("admin_mode")
     uid = update.effective_user.id
 
-    if mode != "waiting_welcome_photo":
+    if mode == "waiting_welcome_photo":
+        if uid not in ADMIN_IDS:
+            await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+            return
+
+        if not update.message or not update.message.photo:
+            await update.message.reply_text("❌ ابعث صورة فقط.")
+            return
+
+        photo = update.message.photo[-1]
+        file_id = photo.file_id
+
+        WELCOME_DATA["photo_file_id"] = file_id
+        save_json_file(WELCOME_FILE, WELCOME_DATA)
+
+        context.user_data.pop("admin_mode", None)
+
+        await update.message.reply_text(
+            "✅ تم حفظ صورة الترحيب بنجاح.\n\n"
+            "من الآن فصاعدًا، أول طالب يبعث للبوت رح توصله هذه الصورة تلقائيًا."
+        )
         return
 
-    if uid not in ADMIN_IDS:
-        await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+    if mode == "waiting_ramadan_post_photo":
+        if uid not in ADMIN_IDS:
+            await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
+            return
+
+        if not update.message or not update.message.photo:
+            await update.message.reply_text("❌ ابعث صورة فقط.")
+            return
+
+        post_text = context.user_data.get("pending_ramadan_text", "").strip()
+        if not post_text:
+            await update.message.reply_text("❌ النص غير موجود. أعد العملية من جديد باستخدام /setramadanpost")
+            context.user_data.pop("admin_mode", None)
+            return
+
+        photo = update.message.photo[-1]
+        file_id = photo.file_id
+
+        PENDING_RAMADAN_DATA["date"] = amman_now().strftime("%Y-%m-%d")
+        PENDING_RAMADAN_DATA["text"] = post_text
+        PENDING_RAMADAN_DATA["photo_file_id"] = file_id
+        PENDING_RAMADAN_DATA["posted"] = False
+
+        save_json_file(PENDING_RAMADAN_FILE, PENDING_RAMADAN_DATA)
+
+        context.user_data.pop("admin_mode", None)
+        context.user_data.pop("pending_ramadan_text", None)
+
+        await update.message.reply_text(
+            "✅ تم حفظ منشور رمضان بنجاح.\n\n"
+            "⏰ سيتم نشره تلقائيًا اليوم الساعة 8:00 مساءً."
+        )
         return
-
-    if not update.message or not update.message.photo:
-        await update.message.reply_text("❌ ابعث صورة فقط.")
-        return
-
-    photo = update.message.photo[-1]
-    file_id = photo.file_id
-
-    WELCOME_DATA["photo_file_id"] = file_id
-    save_json_file(WELCOME_FILE, WELCOME_DATA)
-
-    context.user_data.pop("admin_mode", None)
-
-    await update.message.reply_text(
-        "✅ تم حفظ صورة الترحيب بنجاح.\n\n"
-        "من الآن فصاعدًا، أول طالب يبعث للبوت رح توصله هذه الصورة تلقائيًا."
-    )
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1475,6 +1540,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode is None:
         await send_welcome_photo_once(update, context)
+        
+    if mode == "waiting_ramadan_post_text":
+        if not text:
+            await update.message.reply_text("❌ ابعث نص المنشور أولًا.")
+            return
+
+        context.user_data["pending_ramadan_text"] = text
+        context.user_data["admin_mode"] = "waiting_ramadan_post_photo"
+
+        await update.message.reply_text(
+            "🖼️ ممتاز. ابعث الآن صورة منشور رمضان."
+        )
+        return
         
     if mode == "student_lookup":
         student_id = resolve_student_id(text)
@@ -1912,6 +1990,8 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
 
         known_commands = {
             "start",
+            "setwelcome",
+            "setramadanpost",
             "myid",
             "stats",
             "top",
@@ -1928,12 +2008,20 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
             "dashboard",
             "admin",
             "testchannel",
-            "postramadannow",
             "gpttest",
             "quizday",
             "quizramadan",
             "quiz",
         }
+
+        if raw not in known_commands:
+            target = f"@{raw}"
+            found_student_id = resolve_student_id(target)
+            if found_student_id:
+                await update.message.reply_text(build_student_profile_text(found_student_id))
+                return
+
+    await update.message.reply_text("أمر غير معروف.")
 
         if raw not in known_commands:
             target = f"@{raw}"
@@ -1958,6 +2046,82 @@ async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ تم إرسال رسالة تجريبية للقناة.")
     except Exception as e:
         await update.message.reply_text(f"❌ فشل الإرسال للقناة:\n{e}")
+        
+        
+async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
+    today_str = amman_now().strftime("%Y-%m-%d")
+
+    # إذا اليوم 2026-03-09 لا تذكّر
+    if today_str == "2026-03-09":
+        return
+
+    if PENDING_RAMADAN_DATA.get("date") == today_str and PENDING_RAMADAN_DATA.get("text"):
+        return
+
+    try:
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text=(
+                "⏰ تذكير رمضان\n\n"
+                "لازم تجهز منشور اليوم هسا.\n"
+                "ابعتلي الأمر التالي:\n"
+                "/setramadanpost\n\n"
+                "وبعده ابعث النص ثم الصورة."
+            )
+        )
+    except Exception as e:
+        print(f"❌ remind_ramadan_post failed: {e}")
+        
+        
+        async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
+    today_str = amman_now().strftime("%Y-%m-%d")
+
+    # لا ننشر شيء بتاريخ 2026-03-09
+    if today_str == "2026-03-09":
+        return
+
+    if PENDING_RAMADAN_DATA.get("date") != today_str:
+        return
+
+    if PENDING_RAMADAN_DATA.get("posted", False):
+        return
+
+    post_text = PENDING_RAMADAN_DATA.get("text", "").strip()
+    photo_file_id = PENDING_RAMADAN_DATA.get("photo_file_id", "").strip()
+
+    if not post_text:
+        return
+
+    try:
+        if photo_file_id:
+            await context.bot.send_photo(
+                chat_id=MAIN_CHANNEL_ID,
+                photo=photo_file_id,
+                caption=post_text
+            )
+        else:
+            await context.bot.send_message(
+                chat_id=MAIN_CHANNEL_ID,
+                text=post_text
+            )
+
+        PENDING_RAMADAN_DATA["posted"] = True
+        save_json_file(PENDING_RAMADAN_FILE, PENDING_RAMADAN_DATA)
+
+        await context.bot.send_message(
+            chat_id=ADMIN_ID,
+            text="✅ تم نشر منشور رمضان المجدول بنجاح في القناة الرئيسية."
+        )
+
+    except Exception as e:
+        print(f"❌ publish_pending_ramadan_post failed: {e}")
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"❌ فشل نشر منشور رمضان المجدول:\n{e}"
+            )
+        except Exception:
+            pass
 
 
 # =========================================================
@@ -1968,6 +2132,7 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("setwelcome", set_welcome))
+    app.add_handler(CommandHandler("setramadanpost", set_ramadan_post))
     app.add_handler(CommandHandler("myid", myid))
     app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CommandHandler("top", top))
@@ -2000,9 +2165,14 @@ def main():
     app.add_error_handler(error_handler)
 
     app.job_queue.run_daily(
-        scheduled_ramadan_post,
-        time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
-    )
+    remind_ramadan_post,
+    time=time(hour=18, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+)
+
+app.job_queue.run_daily(
+    publish_pending_ramadan_post,
+    time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+)
 
     print("Bot is running...")
     app.run_polling()
