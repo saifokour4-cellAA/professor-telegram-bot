@@ -1968,6 +1968,7 @@ async def gpt_test(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("اكتب السؤال بعد الأمر.")
         return
+
     question = " ".join(context.args)
     answer = await ask_gpt(question)
     await update.message.reply_text(answer)
@@ -2023,24 +2024,6 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
 
     await update.message.reply_text("أمر غير معروف.")
 
-        if raw not in known_commands:
-            target = f"@{raw}"
-            found_student_id = resolve_student_id(target)
-            if found_student_id:
-                await update.message.reply_text(build_student_profile_text(found_student_id))
-                return
-
-    await update.message.reply_text("أمر غير معروف.")
-
-        if raw not in known_commands:
-            target = f"@{raw}"
-            found_student_id = resolve_student_id(target)
-            if found_student_id:
-                await update.message.reply_text(build_student_profile_text(found_student_id))
-                return
-
-    await update.message.reply_text("أمر غير معروف.")
-
 
 async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -2055,15 +2038,16 @@ async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("✅ تم إرسال رسالة تجريبية للقناة.")
     except Exception as e:
         await update.message.reply_text(f"❌ فشل الإرسال للقناة:\n{e}")
-        
-        
+
+
 async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
 
-    # إذا اليوم 2026-03-09 لا تذكّر
+    # إلغاء يوم 2026-03-09
     if today_str == "2026-03-09":
         return
 
+    # إذا منشور اليوم محفوظ بالفعل، لا ترسل تذكير
     if PENDING_RAMADAN_DATA.get("date") == today_str and PENDING_RAMADAN_DATA.get("text"):
         return
 
@@ -2080,9 +2064,9 @@ async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
         )
     except Exception as e:
         print(f"❌ remind_ramadan_post failed: {e}")
-        
-        
-        async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
+
+
+async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
 
     # لا ننشر شيء بتاريخ 2026-03-09
@@ -2158,7 +2142,6 @@ def main():
     app.add_handler(CommandHandler("dashboard", dashboard))
     app.add_handler(CommandHandler("admin", admin_panel))
     app.add_handler(CommandHandler("testchannel", test_channel))
-    app.add_handler(CommandHandler("postramadannow", post_ramadan_now))
     app.add_handler(CommandHandler("quizday", quiz_day))
     app.add_handler(CommandHandler("quizramadan", quiz_ramadan))
     app.add_handler(CommandHandler("quiz", quiz))
@@ -2174,14 +2157,14 @@ def main():
     app.add_error_handler(error_handler)
 
     app.job_queue.run_daily(
-    remind_ramadan_post,
-    time=time(hour=18, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
-)
+        remind_ramadan_post,
+        time=time(hour=18, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+    )
 
-app.job_queue.run_daily(
-    publish_pending_ramadan_post,
-    time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
-)
+    app.job_queue.run_daily(
+        publish_pending_ramadan_post,
+        time=time(hour=20, minute=0, second=0, tzinfo=ZoneInfo("Asia/Amman"))
+    )
 
     print("Bot is running...")
     app.run_polling()
