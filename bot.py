@@ -119,7 +119,6 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 REQUESTS_FILE = os.path.join(DATA_DIR, "requests_data.json")
 STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
-POSTED_RAMADAN_FILE = os.path.join(DATA_DIR, "posted_ramadan.json")
 QUIZ_FILE = os.path.join(DATA_DIR, "ramadan_quiz_data.json")
 WELCOME_FILE = os.path.join(DATA_DIR, "welcome_config.json")
 PENDING_RAMADAN_FILE = os.path.join(DATA_DIR, "pending_ramadan_post.json")
@@ -158,9 +157,6 @@ if not os.path.exists(REQUESTS_FILE):
 if not os.path.exists(STUDENTS_FILE):
     save_json_file(STUDENTS_FILE, {"students": {}})
 
-if not os.path.exists(POSTED_RAMADAN_FILE):
-    save_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
-
 if not os.path.exists(QUIZ_FILE):
     save_json_file(QUIZ_FILE, {
         "current_quiz": None,
@@ -184,7 +180,6 @@ if not os.path.exists(PENDING_RAMADAN_FILE):
 
 REQUESTS_DATA = load_json_file(REQUESTS_FILE, {"counts": {}, "who": {}})
 STUDENTS_DATA = load_json_file(STUDENTS_FILE, {"students": {}})
-POSTED_RAMADAN_DATA = load_json_file(POSTED_RAMADAN_FILE, {"posted_dates": []})
 QUIZ_DATA = load_json_file(QUIZ_FILE, {
     "current_quiz": None,
     "quizzes": {},
@@ -321,10 +316,23 @@ def resolve_student_id(target_text: str):
 
 def get_quiz_ranking():
     participants = QUIZ_DATA.get("participants", {})
+
+    def avg_speed_score(p):
+        count = p.get("new_system_answers", 0)
+        score = p.get("speed_score", 0)
+
+        if count > 0:
+            return score / count
+
+        return 999999
+
     return sorted(
         participants.values(),
-        key=lambda x: (x.get("points", 0), x.get("correct_count", 0)),
-        reverse=True
+        key=lambda x: (
+            -x.get("points", 0),
+            avg_speed_score(x),
+            -x.get("correct_count", 0)
+        )
     )
 
 
@@ -1119,34 +1127,38 @@ async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("هذا الأمر للأدمن فقط ✅")
         return
 
-    participants = QUIZ_DATA.get("participants", {})
+    ranking = get_quiz_ranking()
 
-    if not participants:
+    if not ranking:
         await update.message.reply_text("لا يوجد مشاركون في مسابقة رمضان بعد.")
         return
 
-    sorted_participants = sorted(
-        participants.values(),
-        key=lambda x: (x.get("points", 0), x.get("correct_count", 0), -x.get("votes_count", 0)),
-        reverse=True
-    )
-
     msg = "🏆 الترتيب الكامل لمسابقة رمضان\n\n"
 
-    for i, p in enumerate(sorted_participants, start=1):
+    for i, p in enumerate(ranking, start=1):
         username = f"@{p.get('username')}" if p.get("username") else "بدون يوزرنيم"
         points = p.get("points", 0)
+        correct_count = p.get("correct_count", 0)
+
+        speed_avg_text = "غير محسوب بعد"
+        new_answers = p.get("new_system_answers", 0)
+        speed_score = p.get("speed_score", 0)
+        if new_answers > 0:
+            speed_avg_text = f"{(speed_score / new_answers):.2f}"
 
         msg += (
             f"{i}) {p.get('full_name', 'بدون اسم')}\n"
             f"🔗 {username}\n"
             f"🆔 {p.get('id')}\n"
-            f"⭐ {points} نقطة\n\n"
+            f"⭐ {points} نقطة\n"
+            f"✅ صحيحة: {correct_count}\n"
+            f"⚡ متوسط سرعة الإجابة: {speed_avg_text}\n\n"
         )
 
     max_len = 3500
     for i in range(0, len(msg), max_len):
         await update.message.reply_text(msg[i:i + max_len])
+
 
 async def send_current_quiz_to_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -1237,11 +1249,18 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "points": 0,
             "votes_count": 0,
             "correct_count": 0,
-            "answers": {}
+            "answers": {},
+            "speed_score": 0,
+            "new_system_answers": 0
         }
     else:
         participants[user_id]["full_name"] = user.full_name
         participants[user_id]["username"] = user.username if user.username else ""
+
+        if "speed_score" not in participants[user_id]:
+            participants[user_id]["speed_score"] = 0
+        if "new_system_answers" not in participants[user_id]:
+            participants[user_id]["new_system_answers"] = 0
 
     if quiz_key in participants[user_id]["answers"]:
         rank = get_user_rank(user_id)
@@ -1255,10 +1274,34 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     is_correct = chosen_idx == quiz_info["correct_option"]
 
     participants[user_id]["votes_count"] += 1
+
+    answer_time = amman_now().strftime("%Y-%m-%d %H:%M:%S")
+
     participants[user_id]["answers"][quiz_key] = {
         "chosen_option": chosen_idx,
-        "is_correct": is_correct
+        "is_correct": is_correct,
+        "answered_at": answer_time
     }
+
+    # حساب ترتيب سرعة الإجابة لهذا السؤال فقط
+    answer_times = []
+
+    for pid, pdata in participants.items():
+        ans = pdata.get("answers", {}).get(quiz_key)
+        if ans and ans.get("answered_at"):
+            answer_times.append((pid, ans["answered_at"]))
+
+    answer_times = sorted(answer_times, key=lambda x: x[1])
+
+    rank_in_this_question = None
+    for idx, (pid, _) in enumerate(answer_times, start=1):
+        if str(pid) == str(user_id):
+            rank_in_this_question = idx
+            break
+
+    if rank_in_this_question is not None:
+        participants[user_id]["speed_score"] += rank_in_this_question
+        participants[user_id]["new_system_answers"] += 1
 
     if is_correct:
         participants[user_id]["points"] += 3
@@ -1509,7 +1552,9 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         post_text = context.user_data.get("pending_ramadan_text", "").strip()
         if not post_text:
-            await update.message.reply_text("❌ النص غير موجود. أعد العملية من جديد باستخدام /setramadanpost")
+            await update.message.reply_text(
+                "❌ النص غير موجود. أعد العملية من جديد باستخدام /setramadanpost"
+            )
             context.user_data.pop("admin_mode", None)
             return
 
@@ -1540,7 +1585,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if mode is None:
         await send_welcome_photo_once(update, context)
-        
+
     if mode == "waiting_ramadan_post_text":
         if not text:
             await update.message.reply_text("❌ ابعث نص المنشور أولًا.")
@@ -1549,16 +1594,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["pending_ramadan_text"] = text
         context.user_data["admin_mode"] = "waiting_ramadan_post_photo"
 
-        await update.message.reply_text(
-            "🖼️ ممتاز. ابعث الآن صورة منشور رمضان."
-        )
+        await update.message.reply_text("🖼️ ممتاز. ابعث الآن صورة منشور رمضان.")
         return
-        
+
     if mode == "student_lookup":
         student_id = resolve_student_id(text)
         if not student_id:
             await update.message.reply_text("لم أجد هذا الطالب.")
             return
+
         await update.message.reply_text(build_student_profile_text(student_id))
         context.user_data.pop("admin_mode", None)
         return
@@ -1950,7 +1994,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text not in known_buttons:
         await context.bot.send_chat_action(
             chat_id=update.effective_chat.id,
-            action="typing"
+            action=ChatAction.TYPING
         )
         reply = await ask_gpt(text)
         await update.message.reply_text(reply)
