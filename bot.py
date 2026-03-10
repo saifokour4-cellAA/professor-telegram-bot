@@ -2032,6 +2032,15 @@ async def handle_unknown_command(update: Update, context: ContextTypes.DEFAULT_T
 
     await update.message.reply_text("أمر غير معروف.")
 
+        if raw not in known_commands:
+            target = f"@{raw}"
+            found_student_id = resolve_student_id(target)
+            if found_student_id:
+                await update.message.reply_text(build_student_profile_text(found_student_id))
+                return
+
+    await update.message.reply_text("أمر غير معروف.")
+
 
 async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
