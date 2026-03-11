@@ -101,7 +101,7 @@ logger = logging.getLogger(__name__)
 # =========================================================
 # Settings
 # =========================================================
-TOKEN = "8654189257:AAHQ7Jdn5-vmLsD5jP4SC-WwrkyWxJO9Fhc"
+TOKEN = os.getenv("BOT_TOKEN")
 
 ADMIN_ID = 8151228673
 ADMIN_IDS = {ADMIN_ID}
@@ -122,6 +122,7 @@ STUDENTS_FILE = os.path.join(DATA_DIR, "students_data.json")
 QUIZ_FILE = os.path.join(DATA_DIR, "ramadan_quiz_data.json")
 WELCOME_FILE = os.path.join(DATA_DIR, "welcome_config.json")
 PENDING_RAMADAN_FILE = os.path.join(DATA_DIR, "pending_ramadan_post.json")
+
 
 def load_json_file(path, default_data):
     if not os.path.exists(path):
@@ -163,13 +164,13 @@ if not os.path.exists(QUIZ_FILE):
         "quizzes": {},
         "participants": {}
     })
-    
+
 if not os.path.exists(WELCOME_FILE):
     save_json_file(WELCOME_FILE, {
         "photo_file_id": "",
         "sent_to_users": []
     })
-    
+
 if not os.path.exists(PENDING_RAMADAN_FILE):
     save_json_file(PENDING_RAMADAN_FILE, {
         "date": "",
@@ -198,6 +199,7 @@ PENDING_RAMADAN_DATA = load_json_file(PENDING_RAMADAN_FILE, {
 
 DATA = REQUESTS_DATA
 
+
 # =========================================================
 # Helpers
 # =========================================================
@@ -207,8 +209,8 @@ def normalize_text(text: str) -> str:
 
 def amman_now():
     return datetime.now(ZoneInfo("Asia/Amman"))
-    
-    
+
+
 async def send_welcome_photo_once(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
@@ -258,6 +260,27 @@ def ensure_student_fields(student: dict):
         student["first_name"] = ""
     if "last_seen" not in student:
         student["last_seen"] = "active"
+
+
+def ensure_quiz_participant_fields(participant: dict):
+    if "id" not in participant:
+        participant["id"] = 0
+    if "full_name" not in participant:
+        participant["full_name"] = ""
+    if "username" not in participant:
+        participant["username"] = ""
+    if "points" not in participant:
+        participant["points"] = 0
+    if "votes_count" not in participant:
+        participant["votes_count"] = 0
+    if "correct_count" not in participant:
+        participant["correct_count"] = 0
+    if "answers" not in participant:
+        participant["answers"] = {}
+    if "speed_score" not in participant:
+        participant["speed_score"] = 0
+    if "new_system_answers" not in participant:
+        participant["new_system_answers"] = 0
 
 
 def save_student(user):
@@ -316,6 +339,9 @@ def resolve_student_id(target_text: str):
 
 def get_quiz_ranking():
     participants = QUIZ_DATA.get("participants", {})
+
+    for participant in participants.values():
+        ensure_quiz_participant_fields(participant)
 
     def avg_speed_score(p):
         count = p.get("new_system_answers", 0)
@@ -783,8 +809,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "اختر القسم المناسب من القائمة 👇",
         reply_markup=main_keyboard(),
     )
-    
-    
+
+
 async def set_welcome(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
 
@@ -804,7 +830,6 @@ async def set_ramadan_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     context.user_data["admin_mode"] = "waiting_ramadan_post_text"
-
     await update.message.reply_text(
         "📩 ابعث الآن نص منشور رمضان الذي تريد نشره اليوم الساعة 8:00 مساءً."
     )
@@ -812,6 +837,7 @@ async def set_ramadan_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def myid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"Your ID: {update.effective_user.id}")
+
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id not in ADMIN_IDS:
@@ -1058,7 +1084,7 @@ async def send_subscription_guide(update: Update):
         "3) حوّل المبلغ عبر زين كاش\n"
         "4) اضغط زر إرسال وصل الدفع\n"
         "5) ابعت صورة الوصل للبروفيسور\n"
-        "6) بعد التأكيد رح تستلم رابط القناة\n\n"
+        "6) بعد تأكيد الدفع سيتم التواصل معك من البروفيسور\n\n"
         "📱 زين كاش: 0798024692",
         reply_markup=InlineKeyboardMarkup(btns),
     )
@@ -1136,6 +1162,8 @@ async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = "🏆 الترتيب الكامل لمسابقة رمضان\n\n"
 
     for i, p in enumerate(ranking, start=1):
+        ensure_quiz_participant_fields(p)
+
         username = f"@{p.get('username')}" if p.get("username") else "بدون يوزرنيم"
         points = p.get("points", 0)
         correct_count = p.get("correct_count", 0)
@@ -1152,7 +1180,7 @@ async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🆔 {p.get('id')}\n"
             f"⭐ {points} نقطة\n"
             f"✅ صحيحة: {correct_count}\n"
-            f"⚡ متوسط سرعة الإجابة: {speed_avg_text}\n\n"
+            f"⚡ متوسط سرعة الإجابة الصحيحة: {speed_avg_text}\n\n"
         )
 
     max_len = 3500
@@ -1180,6 +1208,9 @@ async def send_current_quiz_to_user(update: Update, context: ContextTypes.DEFAUL
 
     user_id = str(user.id)
     participants = QUIZ_DATA.setdefault("participants", {})
+
+    if user_id in participants:
+        ensure_quiz_participant_fields(participants[user_id])
 
     if user_id in participants and current_quiz_key in participants[user_id].get("answers", {}):
         rank = get_user_rank(user_id)
@@ -1254,13 +1285,9 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             "new_system_answers": 0
         }
     else:
+        ensure_quiz_participant_fields(participants[user_id])
         participants[user_id]["full_name"] = user.full_name
         participants[user_id]["username"] = user.username if user.username else ""
-
-        if "speed_score" not in participants[user_id]:
-            participants[user_id]["speed_score"] = 0
-        if "new_system_answers" not in participants[user_id]:
-            participants[user_id]["new_system_answers"] = 0
 
     if quiz_key in participants[user_id]["answers"]:
         rank = get_user_rank(user_id)
@@ -1274,8 +1301,7 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
     is_correct = chosen_idx == quiz_info["correct_option"]
 
     participants[user_id]["votes_count"] += 1
-
-    answer_time = amman_now().strftime("%Y-%m-%d %H:%M:%S")
+    answer_time = amman_now().timestamp()
 
     participants[user_id]["answers"][quiz_key] = {
         "chosen_option": chosen_idx,
@@ -1283,12 +1309,12 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "answered_at": answer_time
     }
 
-    # حساب ترتيب سرعة الإجابة لهذا السؤال فقط
+    # ترتيب السرعة لهذا السؤال من الآن وصاعدًا
     answer_times = []
-
     for pid, pdata in participants.items():
+        ensure_quiz_participant_fields(pdata)
         ans = pdata.get("answers", {}).get(quiz_key)
-        if ans and ans.get("answered_at"):
+        if ans and ans.get("answered_at") is not None and ans.get("is_correct") is True:
             answer_times.append((pid, ans["answered_at"]))
 
     answer_times = sorted(answer_times, key=lambda x: x[1])
@@ -1299,11 +1325,9 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             rank_in_this_question = idx
             break
 
-    if rank_in_this_question is not None:
+    if is_correct and rank_in_this_question is not None:
         participants[user_id]["speed_score"] += rank_in_this_question
         participants[user_id]["new_system_answers"] += 1
-
-    if is_correct:
         participants[user_id]["points"] += 3
         participants[user_id]["correct_count"] += 1
 
@@ -1321,7 +1345,6 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🏆 مجموعك الكلي: {participants[user_id]['points']}\n"
             f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
         )
-
     else:
         save_json_file(QUIZ_FILE, QUIZ_DATA)
 
@@ -1333,17 +1356,16 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
         )
 
+
 # =========================================================
 # Ramadan Posts
 # =========================================================
 async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
 
-    # إلغاء يوم 2026-03-09
     if today_str == "2026-03-09":
         return
 
-    # إذا كان منشور اليوم محفوظًا بالفعل، لا تذكر
     if PENDING_RAMADAN_DATA.get("date") == today_str and PENDING_RAMADAN_DATA.get("text"):
         return
 
@@ -1365,7 +1387,6 @@ async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
 async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
     today_str = amman_now().strftime("%Y-%m-%d")
 
-    # إلغاء يوم 2026-03-09
     if today_str == "2026-03-09":
         return
 
@@ -1411,6 +1432,7 @@ async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
             )
         except Exception:
             pass
+
 
 # =========================================================
 # Admin Panel
@@ -2005,6 +2027,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=main_keyboard()
     )
 
+
 # =========================================================
 # Misc Commands
 # =========================================================
@@ -2084,87 +2107,13 @@ async def test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ فشل الإرسال للقناة:\n{e}")
 
 
-async def remind_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
-    today_str = amman_now().strftime("%Y-%m-%d")
-
-    # إلغاء يوم 2026-03-09
-    if today_str == "2026-03-09":
-        return
-
-    # إذا منشور اليوم محفوظ بالفعل، لا ترسل تذكير
-    if PENDING_RAMADAN_DATA.get("date") == today_str and PENDING_RAMADAN_DATA.get("text"):
-        return
-
-    try:
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text=(
-                "⏰ تذكير رمضان\n\n"
-                "لازم تجهز منشور اليوم هسا.\n"
-                "ابعتلي الأمر التالي:\n"
-                "/setramadanpost\n\n"
-                "وبعده ابعث النص ثم الصورة."
-            )
-        )
-    except Exception as e:
-        print(f"❌ remind_ramadan_post failed: {e}")
-
-
-async def publish_pending_ramadan_post(context: ContextTypes.DEFAULT_TYPE):
-    today_str = amman_now().strftime("%Y-%m-%d")
-
-    # لا ننشر شيء بتاريخ 2026-03-09
-    if today_str == "2026-03-09":
-        return
-
-    if PENDING_RAMADAN_DATA.get("date") != today_str:
-        return
-
-    if PENDING_RAMADAN_DATA.get("posted", False):
-        return
-
-    post_text = PENDING_RAMADAN_DATA.get("text", "").strip()
-    photo_file_id = PENDING_RAMADAN_DATA.get("photo_file_id", "").strip()
-
-    if not post_text:
-        return
-
-    try:
-        if photo_file_id:
-            await context.bot.send_photo(
-                chat_id=MAIN_CHANNEL_ID,
-                photo=photo_file_id,
-                caption=post_text
-            )
-        else:
-            await context.bot.send_message(
-                chat_id=MAIN_CHANNEL_ID,
-                text=post_text
-            )
-
-        PENDING_RAMADAN_DATA["posted"] = True
-        save_json_file(PENDING_RAMADAN_FILE, PENDING_RAMADAN_DATA)
-
-        await context.bot.send_message(
-            chat_id=ADMIN_ID,
-            text="✅ تم نشر منشور رمضان المجدول بنجاح في القناة الرئيسية."
-        )
-
-    except Exception as e:
-        print(f"❌ publish_pending_ramadan_post failed: {e}")
-        try:
-            await context.bot.send_message(
-                chat_id=ADMIN_ID,
-                text=f"❌ فشل نشر منشور رمضان المجدول:\n{e}"
-            )
-        except Exception:
-            pass
-
-
 # =========================================================
 # Main
 # =========================================================
 def main():
+    if not TOKEN:
+        raise ValueError("BOT_TOKEN environment variable is missing.")
+
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
