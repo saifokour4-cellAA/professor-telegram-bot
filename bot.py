@@ -335,6 +335,18 @@ def resolve_student_id(target_text: str):
             return student_id
 
     return None
+    
+    
+def get_participant_avg_speed(participant: dict):
+    ensure_quiz_participant_fields(participant)
+
+    count = participant.get("new_system_answers", 0)
+    score = participant.get("speed_score", 0)
+
+    if count > 0:
+        return score / count
+
+    return None
 
 
 def get_quiz_ranking():
@@ -1159,7 +1171,13 @@ async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("لا يوجد مشاركون في مسابقة رمضان بعد.")
         return
 
-    msg = "🏆 الترتيب الكامل لمسابقة رمضان\n\n"
+    top_avg = get_participant_avg_speed(ranking[0])
+    top_avg_text = f"{top_avg:.2f}" if top_avg is not None else "غير محسوب بعد"
+
+    msg = (
+        "🏆 الترتيب الكامل لمسابقة رمضان\n\n"
+        f"🥇 متوسط سرعة صاحب المركز الأول: {top_avg_text}\n\n"
+    )
 
     for i, p in enumerate(ranking, start=1):
         ensure_quiz_participant_fields(p)
@@ -1168,11 +1186,8 @@ async def quiz_ramadan(update: Update, context: ContextTypes.DEFAULT_TYPE):
         points = p.get("points", 0)
         correct_count = p.get("correct_count", 0)
 
-        speed_avg_text = "غير محسوب بعد"
-        new_answers = p.get("new_system_answers", 0)
-        speed_score = p.get("speed_score", 0)
-        if new_answers > 0:
-            speed_avg_text = f"{(speed_score / new_answers):.2f}"
+        avg_speed = get_participant_avg_speed(p)
+        speed_avg_text = f"{avg_speed:.2f}" if avg_speed is not None else "غير محسوب بعد"
 
         msg += (
             f"{i}) {p.get('full_name', 'بدون اسم')}\n"
@@ -1214,10 +1229,20 @@ async def send_current_quiz_to_user(update: Update, context: ContextTypes.DEFAUL
 
     if user_id in participants and current_quiz_key in participants[user_id].get("answers", {}):
         rank = get_user_rank(user_id)
+
+        user_avg = get_participant_avg_speed(participants[user_id])
+        user_avg_text = f"{user_avg:.2f}" if user_avg is not None else "غير محسوب بعد"
+
+        ranking = get_quiz_ranking()
+        top_avg = get_participant_avg_speed(ranking[0]) if ranking else None
+        top_avg_text = f"{top_avg:.2f}" if top_avg is not None else "غير محسوب بعد"
+
         await update.message.reply_text(
             f"🕌 أنت جاوبت على سؤال اليوم بالفعل.\n\n"
             f"⭐ نقاطك الحالية: {participants[user_id].get('points', 0)}\n"
-            f"🏆 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
+            f"🏆 ترتيبك الحالي: {rank if rank else 'غير محدد'}\n"
+            f"⚡ متوسط سرعتك: {user_avg_text}\n"
+            f"🥇 متوسط سرعة الأول: {top_avg_text}"
         )
         return
 
@@ -1291,10 +1316,20 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if quiz_key in participants[user_id]["answers"]:
         rank = get_user_rank(user_id)
+
+        user_avg = get_participant_avg_speed(participants[user_id])
+        user_avg_text = f"{user_avg:.2f}" if user_avg is not None else "غير محسوب بعد"
+
+        ranking = get_quiz_ranking()
+        top_avg = get_participant_avg_speed(ranking[0]) if ranking else None
+        top_avg_text = f"{top_avg:.2f}" if top_avg is not None else "غير محسوب بعد"
+
         await query.message.reply_text(
             f"🕌 أنت جاوبت هذا السؤال بالفعل.\n\n"
             f"⭐ نقاطك الحالية: {participants[user_id].get('points', 0)}\n"
-            f"🏆 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
+            f"🏆 ترتيبك الحالي: {rank if rank else 'غير محدد'}\n"
+            f"⚡ متوسط سرعتك: {user_avg_text}\n"
+            f"🥇 متوسط سرعة الأول: {top_avg_text}"
         )
         return
 
@@ -1339,21 +1374,39 @@ async def quiz_answer_button(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
         rank = get_user_rank(user_id)
 
+        user_avg = get_participant_avg_speed(participants[user_id])
+        user_avg_text = f"{user_avg:.2f}" if user_avg is not None else "غير محسوب بعد"
+
+        ranking = get_quiz_ranking()
+        top_avg = get_participant_avg_speed(ranking[0]) if ranking else None
+        top_avg_text = f"{top_avg:.2f}" if top_avg is not None else "غير محسوب بعد"
+
         await query.message.reply_text(
             "✅ إجابة صحيحة يا بطل!\n\n"
             "⭐ صار عندك 3 نقاط\n"
             f"🏆 مجموعك الكلي: {participants[user_id]['points']}\n"
-            f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
+            f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}\n"
+            f"⚡ متوسط سرعتك: {user_avg_text}\n"
+            f"🥇 متوسط سرعة الأول: {top_avg_text}"
         )
     else:
         save_json_file(QUIZ_FILE, QUIZ_DATA)
 
         rank = get_user_rank(user_id)
 
+        user_avg = get_participant_avg_speed(participants[user_id])
+        user_avg_text = f"{user_avg:.2f}" if user_avg is not None else "غير محسوب بعد"
+
+        ranking = get_quiz_ranking()
+        top_avg = get_participant_avg_speed(ranking[0]) if ranking else None
+        top_avg_text = f"{top_avg:.2f}" if top_avg is not None else "غير محسوب بعد"
+
         await query.message.reply_text(
             "❌ إجابة غير صحيحة.\n\n"
             f"🏆 مجموعك الكلي: {participants[user_id]['points']}\n"
-            f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}"
+            f"📈 ترتيبك الحالي: {rank if rank else 'غير محدد'}\n"
+            f"⚡ متوسط سرعتك: {user_avg_text}\n"
+            f"🥇 متوسط سرعة الأول: {top_avg_text}"
         )
 
 
