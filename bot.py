@@ -560,20 +560,35 @@ def build_students_stats_text() -> str:
 def build_subject_stats_text(subject_name: str) -> str:
     request_count = DATA.get("counts", {}).get(subject_name, 0)
 
+    requested_students = []
     paid_students = []
     total_revenue = 0
 
-    for student in STUDENTS_DATA["students"].values():
+    for student_id, student in STUDENTS_DATA["students"].items():
         ensure_student_fields(student)
-        subscriptions = student.get("subscriptions", {})
 
+        full_name = student.get("full_name", "بدون اسم")
+        username = student.get("username", "")
+        username_text = f"@{username}" if username else "بدون يوزرنيم"
+
+        # الطلاب المهتمين / الذين طلبوا المادة
+        if subject_name in student.get("requested_subjects", []):
+            requested_students.append({
+                "id": student_id,
+                "name": full_name,
+                "username_text": username_text,
+            })
+
+        # الطلاب الذين دفعوا فعليًا
+        subscriptions = student.get("subscriptions", {})
         if subject_name in subscriptions:
             amount = subscriptions[subject_name].get("amount", 0)
             total_revenue += amount
 
             paid_students.append({
-                "name": student.get("full_name", "بدون اسم"),
-                "username": student.get("username", ""),
+                "id": student_id,
+                "name": full_name,
+                "username_text": username_text,
                 "points": student.get("points", 0),
                 "amount": amount
             })
@@ -581,16 +596,29 @@ def build_subject_stats_text(subject_name: str) -> str:
     msg = (
         f"📚 المادة: {subject_name}\n\n"
         f"📈 عدد الطلبات: {request_count}\n"
-        f"💰 عدد المشتركين: {len(paid_students)}\n"
+        f"👀 عدد الطلاب المهتمين: {len(requested_students)}\n"
+        f"💰 عدد الطلاب الذين دفعوا: {len(paid_students)}\n"
         f"💵 مجموع الربح: {total_revenue} JD\n\n"
     )
 
-    if paid_students:
-        msg += "👨‍🎓 الطلاب المشتركين:\n\n"
-        for i, s in enumerate(paid_students, start=1):
-            username = f"@{s['username']}" if s["username"] else ""
+    if requested_students:
+        msg += "📝 الطلاب المهتمون بالمادة:\n\n"
+        for i, s in enumerate(requested_students, start=1):
             msg += (
-                f"{i}) {s['name']} {username}\n"
+                f"{i}) {s['name']}\n"
+                f"🔗 {s['username_text']}\n"
+                f"🆔 {s['id']}\n\n"
+            )
+    else:
+        msg += "لا يوجد طلاب مهتمون بهذه المادة بعد.\n\n"
+
+    if paid_students:
+        msg += "✅ الطلاب الذين دفعوا فعليًا:\n\n"
+        for i, s in enumerate(paid_students, start=1):
+            msg += (
+                f"{i}) {s['name']}\n"
+                f"🔗 {s['username_text']}\n"
+                f"🆔 {s['id']}\n"
                 f"💰 دفع: {s['amount']} JD\n"
                 f"⭐ نقاطه: {s['points']}\n\n"
             )
